@@ -1,0 +1,13 @@
+merchant_id,merchant_name,merchant_category,fulfillment_site,integration_type,standard_prep_target_min
+M-001,Green Basket Market,grocery,Northside_Fulfillment,merchant_order_api,8
+M-002,Crisp & Co.,prepared_food,Northside_Fulfillment,merchant_order_api,12
+M-003,Pasta Garden,prepared_food,Northside_Fulfillment,merchant_order_api,12
+M-004,QuickCare Pharmacy,pharmacy,Northside_Fulfillment,merchant_order_api,8
+M-005,Corner Table,prepared_food,Central_Fulfillment,merchant_order_api,12
+M-006,Fresh Roots Grocery,grocery,Central_Fulfillment,merchant_order_api,8
+M-007,Home & Handy,retail,Central_Fulfillment,merchant_order_api,8
+M-008,Noodle House,prepared_food,Central_Fulfillment,merchant_order_api,12
+M-009,Daily Mart,grocery,Eastside_Fulfillment,merchant_order_api,8
+M-010,Burger District,prepared_food,Eastside_Fulfillment,merchant_order_api,12
+M-011,Wellness Pharmacy,pharmacy,Eastside_Fulfillment,merchant_order_api,8
+M-012,Tech Stop,retail,Eastside_Fulfillment,merchant_order_api,8

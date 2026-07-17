@@ -1,0 +1,4 @@
+maintenance_id,drone_id,home_hub,opened_at,closed_at,component,maintenance_type,action,reason,parts_used,labor_hours,release_status
+MNT-0001,ZIP-005,Nest_Alpha,2025-02-02T09:00:00,2025-02-06T16:00:00,battery_pack,corrective,replace,Cell 3 internal resistance and high-drain trend,battery_pack_replacement,6.9,returned_to_service
+MNT-0002,ZIP-003,Nest_Alpha,2025-02-20T09:00:00,2025-02-23T16:00:00,motor_2,corrective,replace,Bearing wear confirmed after vibration trend,motor_2_replacement,6.9,returned_to_service
+MNT-0003,ZIP-014,Nest_Beta,2025-03-04T09:00:00,2025-03-05T16:00:00,tether_descent_motor,corrective,service,Intermittent descent-speed variance,tether_descent_motor_replacement,5.7,returned_to_service
