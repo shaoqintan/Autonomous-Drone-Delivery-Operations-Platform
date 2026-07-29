@@ -20,3 +20,13 @@ test("dashboard exposes continuous replay controls", () => {
   assert.doesNotMatch(dashboardSource, /codex-preview/i);
   assert.doesNotMatch(dashboardSource, /Your site is taking shape/i);
 });
+
+test("issue workflow provides immediate triage, kanban stages, and prepared chat", () => {
+  assert.match(dashboardSource, /Issue command board/i);
+  assert.match(dashboardSource, /Recommended on arrival/i);
+  assert.match(dashboardSource, /Waiting on team/i);
+  assert.match(dashboardSource, /Prepared handoff/i);
+  assert.match(dashboardSource, /Issue chat/i);
+  assert.match(dashboardSource, /Ticket stays open until a human resolves it/i);
+  assert.doesNotMatch(dashboardSource, /Generate recommendation/i);
+});

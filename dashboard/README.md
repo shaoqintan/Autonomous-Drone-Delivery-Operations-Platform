@@ -5,7 +5,8 @@ practice pack. It includes:
 
 - fleet status for all 24 aircraft;
 - order, merchant-readiness, and preflight views;
-- a persistent prioritized issue queue with notifications;
+- a persistent Kanban issue board with AI-assisted triage and notifications;
+- prepared team handoffs, ticket chat, and operator-controlled resolution;
 - four replay scenarios derived from the supplied datasets;
 - deterministic policy checks and human-decision guardrails;
 - a LangGraph-orchestrated OpenAI Responses API recommendation selector.
@@ -28,8 +29,9 @@ npx tsc --noEmit
 
 ## OpenAI recommendation selector
 
-Without an API key, the recommendation field remains empty and reports that
-OpenAI is not configured. To enable the OpenAI selection step, set:
+Every issue receives its first policy-grounded action immediately. When an API
+key is configured, OpenAI validates the allowed action and refines the prepared
+team handoff in the background:
 
 ```text
 OPENAI_API_KEY=...
@@ -38,7 +40,8 @@ OPENAI_MODEL=gpt-5.6-luna
 
 The API may only select from action IDs already allowed by the deterministic
 policy engine. Its rule IDs and evidence IDs are validated before the result is
-shown. There is no fabricated local recommendation when the API is unavailable.
+shown. Without an API key, the dashboard keeps the immediate policy-engine
+action and transparently labels it as such.
 
 ## Refresh replay data
 
