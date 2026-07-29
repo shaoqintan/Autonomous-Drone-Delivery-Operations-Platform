@@ -39,20 +39,21 @@ export type RecommendationIssue = {
   humanDecisionRequired: true;
 };
 
-export type RecommendationResult =
-  | {
-      status: "ready";
-      actionId: ResolutionAction;
-      source: "openai";
-      evidenceIds: string[];
-      policyRuleIds: string[];
-      humanDecisionRequired: true;
-    }
-  | {
-      status: "not_configured" | "unavailable";
-      actionId: null;
-      source: null;
-      evidenceIds: [];
-      policyRuleIds: [];
-      humanDecisionRequired: true;
-    };
+export type CoordinationPlan = {
+  required: boolean;
+  channel: string;
+  contactName: string;
+  contactRole: string;
+  subject: string;
+  draftMessage: string;
+};
+
+export type RecommendationResult = {
+  status: "ready";
+  actionId: ResolutionAction;
+  source: "openai" | "policy_engine";
+  evidenceIds: string[];
+  policyRuleIds: string[];
+  humanDecisionRequired: true;
+  coordination: CoordinationPlan;
+};

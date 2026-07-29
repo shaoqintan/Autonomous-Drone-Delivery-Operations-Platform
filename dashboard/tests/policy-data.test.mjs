@@ -43,6 +43,33 @@ test("issues are priority-sorted and always require a human decision", () => {
   }
 });
 
+test("replay scenarios use bounded timelines and timestamped issue arrivals", () => {
+  for (const scenario of payload.scenarios) {
+    const start = new Date(scenario.timelineStart);
+    const end = new Date(scenario.timelineEnd);
+    assert.ok(start < end, `${scenario.id} must have a forward-moving timeline`);
+    assert.equal(end.toISOString(), new Date(scenario.now).toISOString());
+    assert.ok(
+      scenario.issues.every((issue) => new Date(issue.createdAt) <= end),
+      `${scenario.id} contains an issue after the replay end`,
+    );
+  }
+
+  const battery = payload.scenarios.find(
+    (scenario) => scenario.id === "battery-grounding",
+  );
+  assert.ok(
+    new Set(battery.issues.map((issue) => issue.createdAt)).size >= 4,
+    "battery issues should arrive across the timeline instead of as one batch",
+  );
+
+  const weather = payload.scenarios.find(
+    (scenario) => scenario.id === "eastside-weather",
+  );
+  const weatherIssue = weather.issues.find((issue) => issue.category === "Weather");
+  assert.equal(weatherIssue.createdAt, "2025-05-06T17:00:00");
+});
+
 test("known incident regressions use measured policy evidence", () => {
   const battery = payload.scenarios.find(
     (scenario) => scenario.id === "battery-grounding",

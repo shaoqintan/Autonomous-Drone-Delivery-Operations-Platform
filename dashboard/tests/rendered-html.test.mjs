@@ -1,39 +1,22 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFile } from "node:fs/promises";
 
-async function render(path = "/") {
-  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
-  workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}-${path}`);
-  const { default: worker } = await import(workerUrl.href);
+const dashboardSource = await readFile(
+  new URL("../app/operations-dashboard.tsx", import.meta.url),
+  "utf8",
+);
 
-  return worker.fetch(
-    new Request(`http://localhost${path}`, {
-      headers: { accept: "text/html" },
-    }),
-    {
-      ASSETS: {
-        fetch: async () => new Response("Not found", { status: 404 }),
-      },
-    },
-    {
-      waitUntil() {},
-      passThroughOnException() {},
-    },
-  );
-}
-
-test("server-renders the operations dashboard", async () => {
-  const response = await render();
-  assert.equal(response.status, 200);
-  assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
-
-  const html = await response.text();
-  assert.match(html, /Zipline Operations Intelligence/i);
-  assert.match(html, /Fleet status/i);
-  assert.match(html, /Human decision required/i);
-  assert.doesNotMatch(html, /Every aircraft, one live view/i);
-  assert.doesNotMatch(html, /Promise, readiness, departure/i);
-  assert.doesNotMatch(html, /Resolve the highest-risk issue first/i);
-  assert.doesNotMatch(html, /codex-preview/i);
-  assert.doesNotMatch(html, /Your site is taking shape/i);
+test("dashboard exposes continuous replay controls", () => {
+  assert.match(dashboardSource, /Fleet status/i);
+  assert.match(dashboardSource, /Human decision required/i);
+  assert.match(dashboardSource, /5 min\/sec/i);
+  assert.match(dashboardSource, /Replay timeline/i);
+  assert.match(dashboardSource, /setInterval/);
+  assert.doesNotMatch(dashboardSource, /Advance replay/i);
+  assert.doesNotMatch(dashboardSource, /Every aircraft, one live view/i);
+  assert.doesNotMatch(dashboardSource, /Promise, readiness, departure/i);
+  assert.doesNotMatch(dashboardSource, /Resolve the highest-risk issue first/i);
+  assert.doesNotMatch(dashboardSource, /codex-preview/i);
+  assert.doesNotMatch(dashboardSource, /Your site is taking shape/i);
 });

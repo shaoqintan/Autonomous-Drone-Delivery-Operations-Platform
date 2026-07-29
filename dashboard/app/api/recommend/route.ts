@@ -1,6 +1,7 @@
 import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
 import {
   RESOLUTION_ACTIONS,
+  type CoordinationPlan,
   type RecommendationIssue,
   type RecommendationResult,
   type ResolutionAction,
@@ -10,6 +11,7 @@ type ModelSelection = {
   primary_action_id: ResolutionAction;
   evidence_ids: string[];
   policy_rule_ids: string[];
+  draft_message: string;
   human_decision_required: true;
 };
 
@@ -89,6 +91,80 @@ function extractOutputText(payload: unknown): string | null {
   return null;
 }
 
+function humanizeAction(action: ResolutionAction) {
+  return action
+    .toLowerCase()
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function buildCoordinationPlan(
+  issue: RecommendationIssue,
+  action: ResolutionAction,
+  modelDraft?: string,
+): CoordinationPlan {
+  let contactName = "Operations control";
+  let contactRole = "Duty operator";
+  let channel = "Ops control";
+  let instruction =
+    "Please acknowledge this issue, confirm ownership, and post the next verified update here.";
+
+  if (
+    action.includes("MAINTENANCE") ||
+    action === "GROUND_AIRCRAFT" ||
+    action === "AWAIT_VALIDATED_MAINTENANCE_RELEASE"
+  ) {
+    contactName = "Maintenance team";
+    contactRole = "Aircraft maintenance";
+    channel = "Maintenance";
+    instruction =
+      "Please inspect the aircraft, acknowledge ownership, and share the next verified finding here. Do not release the aircraft; the operator must record the validated decision.";
+  } else if (
+    action === "REESTIMATE_PROMISE_FROM_ACTUAL_READY" ||
+    action === "REQUIRE_HANDOFF_VERIFICATION"
+  ) {
+    contactName = "Merchant partner";
+    contactRole = "Merchant operations";
+    channel = "Merchant";
+    instruction =
+      "Please confirm the actual ready time, identify any blocker, and update this thread as soon as the handoff is ready for verification.";
+  } else if (
+    action === "CUSTOMER_OUTREACH" ||
+    action === "MARK_DELIVERY_EXCEPTION"
+  ) {
+    contactName = "Customer support";
+    contactRole = "Delivery support";
+    channel = "Customer support";
+    instruction =
+      "Please contact the customer with the current verified status and post the response or next follow-up time in this thread.";
+  } else if (
+    action === "HOLD_LAUNCH" ||
+    action === "DEFER_ORDER" ||
+    action === "REASSIGN_ORDER" ||
+    action === "REMOVE_INVALID_ASSIGNMENT"
+  ) {
+    contactName = "Site dispatch";
+    contactRole = "Flight planning";
+    channel = "Dispatch";
+    instruction =
+      "Please acknowledge the operational hold, confirm the affected assignment, and post the revised plan or next review time here.";
+  }
+
+  const required = action !== "NO_RECOMMENDATION_INSUFFICIENT_EVIDENCE";
+  const fallbackDraft =
+    `Hi ${contactName} — Ops opened ${issue.id}: ${issue.title}. ` +
+    `${issue.summary} Recommended next action: ${humanizeAction(action)}. ${instruction}`;
+
+  return {
+    required,
+    channel,
+    contactName,
+    contactRole,
+    subject: `${issue.priority} action needed · ${issue.entity}`,
+    draftMessage: modelDraft?.trim() || fallbackDraft,
+  };
+}
+
 async function chooseWithOpenAI(
   issue: RecommendationIssue,
 ): Promise<ModelSelection | null> {
@@ -117,7 +193,9 @@ async function chooseWithOpenAI(
                 "You are a constrained operations recommendation selector. " +
                 "Policy decisions and priority are already final. Select exactly one allowed action. " +
                 "Use only supplied evidence and triggered rule IDs. Never authorize, clear, release, " +
-                "or declare a flight safe. Every result requires a human decision.",
+                "or declare a flight safe. Every result requires a human decision. " +
+                "Draft one concise coordination message for the team that must act. Do not invent " +
+                "names, facts, completion states, or promises. Ask for acknowledgement and a verified update.",
             },
           ],
         },
@@ -163,6 +241,11 @@ async function chooseWithOpenAI(
                 items: { type: "string", enum: issue.ruleIds },
                 minItems: 1,
               },
+              draft_message: {
+                type: "string",
+                minLength: 20,
+                maxLength: 700,
+              },
               human_decision_required: {
                 type: "boolean",
                 const: true,
@@ -172,6 +255,7 @@ async function chooseWithOpenAI(
               "primary_action_id",
               "evidence_ids",
               "policy_rule_ids",
+              "draft_message",
               "human_decision_required",
             ],
             additionalProperties: false,
@@ -204,7 +288,9 @@ async function chooseWithOpenAI(
     !selection.evidence_ids.every((id) => allowedEvidence.has(id)) ||
     !Array.isArray(selection.policy_rule_ids) ||
     !selection.policy_rule_ids.length ||
-    !selection.policy_rule_ids.every((id) => allowedRules.has(id))
+    !selection.policy_rule_ids.every((id) => allowedRules.has(id)) ||
+    typeof selection.draft_message !== "string" ||
+    selection.draft_message.trim().length < 20
   ) {
     return null;
   }
@@ -220,14 +306,16 @@ const recommendationGraph = new StateGraph(GraphState)
   }))
   .addNode("validate_and_render", async (state) => {
     if (!state.selection) {
+      const actionId = state.issue.allowedActions[0];
       return {
         result: {
-          status: "unavailable" as const,
-          actionId: null,
-          source: null,
-          evidenceIds: [] as [],
-          policyRuleIds: [] as [],
+          status: "ready" as const,
+          actionId,
+          source: "policy_engine" as const,
+          evidenceIds: state.issue.evidence.map((item) => item.id),
+          policyRuleIds: state.issue.ruleIds,
           humanDecisionRequired: true as const,
+          coordination: buildCoordinationPlan(state.issue, actionId),
         },
       };
     }
@@ -239,6 +327,11 @@ const recommendationGraph = new StateGraph(GraphState)
         evidenceIds: state.selection.evidence_ids,
         policyRuleIds: state.selection.policy_rule_ids,
         humanDecisionRequired: true as const,
+        coordination: buildCoordinationPlan(
+          state.issue,
+          state.selection.primary_action_id,
+          state.selection.draft_message,
+        ),
       },
     };
   })
@@ -253,24 +346,27 @@ export async function POST(request: Request) {
     const body = (await request.json()) as { issue?: unknown };
     const issue = validateIssue(body.issue);
     if (!process.env.OPENAI_API_KEY) {
+      const actionId = issue.allowedActions[0];
       return Response.json({
-        status: "not_configured",
-        actionId: null,
-        source: null,
-        evidenceIds: [],
-        policyRuleIds: [],
+        status: "ready",
+        actionId,
+        source: "policy_engine",
+        evidenceIds: issue.evidence.map((item) => item.id),
+        policyRuleIds: issue.ruleIds,
         humanDecisionRequired: true,
+        coordination: buildCoordinationPlan(issue, actionId),
       } satisfies RecommendationResult);
     }
     const state = await recommendationGraph.invoke({ issue });
     return Response.json(
       state.result ?? {
-        status: "unavailable",
-        actionId: null,
-        source: null,
-        evidenceIds: [],
-        policyRuleIds: [],
+        status: "ready",
+        actionId: issue.allowedActions[0],
+        source: "policy_engine",
+        evidenceIds: issue.evidence.map((item) => item.id),
+        policyRuleIds: issue.ruleIds,
         humanDecisionRequired: true,
+        coordination: buildCoordinationPlan(issue, issue.allowedActions[0]),
       },
     );
   } catch (error) {

@@ -17,24 +17,32 @@ SCENARIOS = [
         "label": "Battery grounding",
         "description": "ZIP-US-011 deterioration and assignment conflict",
         "now": "2025-05-15T14:40:00",
+        "timelineStart": "2025-05-15T14:00:00",
+        "timelineEnd": "2025-05-15T14:40:00",
     },
     {
         "id": "eastside-weather",
         "label": "Eastside wind hold",
         "description": "Gusts exceed the launch-hold threshold",
         "now": "2025-05-06T17:45:00",
+        "timelineStart": "2025-05-06T16:55:00",
+        "timelineEnd": "2025-05-06T17:45:00",
     },
     {
         "id": "tether-variance",
         "label": "Tether variance",
         "description": "ZIP-US-019 differs from its historical baseline",
         "now": "2025-06-06T11:35:00",
+        "timelineStart": "2025-06-06T11:00:00",
+        "timelineEnd": "2025-06-06T11:35:00",
     },
     {
         "id": "merchant-readiness",
         "label": "Merchant readiness",
         "description": "Pasta Garden readiness uncertainty",
         "now": "2025-04-24T12:25:00",
+        "timelineStart": "2025-04-24T12:00:00",
+        "timelineEnd": "2025-04-24T12:25:00",
     },
 ]
 
@@ -184,7 +192,9 @@ weather_by_key = {
 
 def build_scenario(meta: dict[str, str]) -> dict:
     now = dt(meta["now"])
+    timeline_start = dt(meta["timelineStart"])
     assert now is not None
+    assert timeline_start is not None
     today = now.date().isoformat()
     hour = now.replace(minute=0, second=0, microsecond=0).isoformat(timespec="seconds")
     upcoming_cutoff = now + timedelta(minutes=30)
@@ -237,7 +247,7 @@ def build_scenario(meta: dict[str, str]) -> dict:
                         }
                     ],
                     [action, "DEFER_ORDER", "REASSIGN_ORDER", "CUSTOMER_OUTREACH"],
-                    now,
+                    dt(raw["observed_at"]) or now,
                     launch_blocking=state == "hold",
                 )
             )
@@ -388,7 +398,7 @@ def build_scenario(meta: dict[str, str]) -> dict:
                     sorted(set(rules)),
                     evidence,
                     ["GROUND_AIRCRAFT", "REMOVE_INVALID_ASSIGNMENT", "OPEN_OPERATOR_REVIEW"],
-                    now,
+                    datetime.combine(now.date(), datetime.min.time()),
                     launch_blocking=True,
                 )
             )
@@ -412,7 +422,7 @@ def build_scenario(meta: dict[str, str]) -> dict:
                         }
                     ],
                     ["RESTRICT_AND_OPEN_MAINTENANCE_REVIEW", "OPEN_OPERATOR_REVIEW"],
-                    now,
+                    datetime.combine(now.date(), datetime.min.time()),
                     launch_blocking=False,
                 )
             )
@@ -438,7 +448,10 @@ def build_scenario(meta: dict[str, str]) -> dict:
                         }
                     ],
                     ["OPEN_OPERATOR_REVIEW", "REMOVE_INVALID_ASSIGNMENT"],
-                    now,
+                    max(
+                        timeline_start,
+                        (dt(related[0]["launch_at"]) or now) - timedelta(minutes=30),
+                    ),
                     launch_blocking=False,
                 )
             )
@@ -478,7 +491,7 @@ def build_scenario(meta: dict[str, str]) -> dict:
                             },
                         ],
                         ["OPEN_OPERATOR_REVIEW", "RESTRICT_AND_OPEN_MAINTENANCE_REVIEW"],
-                        now,
+                        dt(recent_tether[-1]["recorded_at"]) or now,
                         launch_blocking=False,
                     )
                 )
@@ -645,7 +658,7 @@ def build_scenario(meta: dict[str, str]) -> dict:
                         },
                     ],
                     ["REESTIMATE_PROMISE_FROM_ACTUAL_READY", "OPEN_OPERATOR_REVIEW"],
-                    now,
+                    launch_at - timedelta(minutes=15),
                     launch_blocking=True,
                 )
             )
@@ -684,7 +697,7 @@ def build_scenario(meta: dict[str, str]) -> dict:
                         "CUSTOMER_OUTREACH",
                         "OPEN_OPERATOR_REVIEW",
                     ],
-                    now,
+                    dt(latest["event_at"]) or now,
                     launch_blocking=False,
                 )
             )

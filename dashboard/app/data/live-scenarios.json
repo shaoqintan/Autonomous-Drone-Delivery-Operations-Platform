@@ -7,6 +7,8 @@
       "label": "Battery grounding",
       "description": "ZIP-US-011 deterioration and assignment conflict",
       "now": "2025-05-15T14:40:00",
+      "timelineStart": "2025-05-15T14:00:00",
+      "timelineEnd": "2025-05-15T14:40:00",
       "generatedFrom": [
         "commercial_delivery_operations.csv",
         "commercial_orders.csv",
@@ -1801,7 +1803,7 @@
             "REMOVE_INVALID_ASSIGNMENT",
             "OPEN_OPERATOR_REVIEW"
           ],
-          "createdAt": "2025-05-15T14:40:00",
+          "createdAt": "2025-05-15T00:00:00",
           "launchBlocking": true,
           "humanDecisionRequired": true,
           "status": "open"
@@ -1836,7 +1838,7 @@
             "REESTIMATE_PROMISE_FROM_ACTUAL_READY",
             "OPEN_OPERATOR_REVIEW"
           ],
-          "createdAt": "2025-05-15T14:40:00",
+          "createdAt": "2025-05-15T14:33:00",
           "launchBlocking": true,
           "humanDecisionRequired": true,
           "status": "open"
@@ -1877,34 +1879,6 @@
           "status": "open"
         },
         {
-          "id": "ISS-ASSIGN-ZIP-US-004-202505151440",
-          "priority": "P1",
-          "category": "Data conflict",
-          "title": "ZIP-US-004 \u00b7 Overlapping assignments",
-          "summary": "2 flights overlap in the replay data.",
-          "entity": "ZIP-US-004",
-          "ruleIds": [
-            "CONFLICTING_STRUCTURED_RECORDS"
-          ],
-          "evidence": [
-            {
-              "id": "assignment-conflict:ZIP-US-004:202505151440",
-              "dataset": "commercial_delivery_operations.csv",
-              "label": "Overlapping flight IDs",
-              "value": "FL-US-35354, FL-US-35337",
-              "timestamp": "2025-05-15T14:48:00"
-            }
-          ],
-          "allowedActions": [
-            "OPEN_OPERATOR_REVIEW",
-            "REMOVE_INVALID_ASSIGNMENT"
-          ],
-          "createdAt": "2025-05-15T14:40:00",
-          "launchBlocking": false,
-          "humanDecisionRequired": true,
-          "status": "open"
-        },
-        {
           "id": "ISS-ASSIGN-ZIP-US-018-202505151440",
           "priority": "P1",
           "category": "Data conflict",
@@ -1927,7 +1901,35 @@
             "OPEN_OPERATOR_REVIEW",
             "REMOVE_INVALID_ASSIGNMENT"
           ],
-          "createdAt": "2025-05-15T14:40:00",
+          "createdAt": "2025-05-15T14:04:00",
+          "launchBlocking": false,
+          "humanDecisionRequired": true,
+          "status": "open"
+        },
+        {
+          "id": "ISS-ASSIGN-ZIP-US-004-202505151440",
+          "priority": "P1",
+          "category": "Data conflict",
+          "title": "ZIP-US-004 \u00b7 Overlapping assignments",
+          "summary": "2 flights overlap in the replay data.",
+          "entity": "ZIP-US-004",
+          "ruleIds": [
+            "CONFLICTING_STRUCTURED_RECORDS"
+          ],
+          "evidence": [
+            {
+              "id": "assignment-conflict:ZIP-US-004:202505151440",
+              "dataset": "commercial_delivery_operations.csv",
+              "label": "Overlapping flight IDs",
+              "value": "FL-US-35354, FL-US-35337",
+              "timestamp": "2025-05-15T14:48:00"
+            }
+          ],
+          "allowedActions": [
+            "OPEN_OPERATOR_REVIEW",
+            "REMOVE_INVALID_ASSIGNMENT"
+          ],
+          "createdAt": "2025-05-15T14:18:00",
           "launchBlocking": false,
           "humanDecisionRequired": true,
           "status": "open"
@@ -1939,6 +1941,8 @@
       "label": "Eastside wind hold",
       "description": "Gusts exceed the launch-hold threshold",
       "now": "2025-05-06T17:45:00",
+      "timelineStart": "2025-05-06T16:55:00",
+      "timelineEnd": "2025-05-06T17:45:00",
       "generatedFrom": [
         "commercial_delivery_operations.csv",
         "commercial_orders.csv",
@@ -3570,6 +3574,36 @@
       ],
       "issues": [
         {
+          "id": "ISS-WX-Eastside_Fulfillment-2025050617",
+          "priority": "P0",
+          "category": "Weather",
+          "title": "Eastside \u00b7 Hold threshold detected",
+          "summary": "3 departure(s) within 30 minutes are affected.",
+          "entity": "Eastside",
+          "ruleIds": [
+            "WX_HOLD_GUST"
+          ],
+          "evidence": [
+            {
+              "id": "weather:Eastside_Fulfillment:2025-05-06T17:00:00",
+              "dataset": "service_area_weather_hourly.csv",
+              "label": "Current site-hour observation",
+              "value": "Wind 34.7 kph \u00b7 Gust 46.0 kph \u00b7 Visibility 11.4 km",
+              "timestamp": "2025-05-06T17:00:00"
+            }
+          ],
+          "allowedActions": [
+            "HOLD_LAUNCH",
+            "DEFER_ORDER",
+            "REASSIGN_ORDER",
+            "CUSTOMER_OUTREACH"
+          ],
+          "createdAt": "2025-05-06T17:00:00",
+          "launchBlocking": true,
+          "humanDecisionRequired": true,
+          "status": "open"
+        },
+        {
           "id": "ISS-READY-ORD-US-34351",
           "priority": "P0",
           "category": "Preflight",
@@ -3599,37 +3633,7 @@
             "REESTIMATE_PROMISE_FROM_ACTUAL_READY",
             "OPEN_OPERATOR_REVIEW"
           ],
-          "createdAt": "2025-05-06T17:45:00",
-          "launchBlocking": true,
-          "humanDecisionRequired": true,
-          "status": "open"
-        },
-        {
-          "id": "ISS-WX-Eastside_Fulfillment-2025050617",
-          "priority": "P0",
-          "category": "Weather",
-          "title": "Eastside \u00b7 Hold threshold detected",
-          "summary": "3 departure(s) within 30 minutes are affected.",
-          "entity": "Eastside",
-          "ruleIds": [
-            "WX_HOLD_GUST"
-          ],
-          "evidence": [
-            {
-              "id": "weather:Eastside_Fulfillment:2025-05-06T17:00:00",
-              "dataset": "service_area_weather_hourly.csv",
-              "label": "Current site-hour observation",
-              "value": "Wind 34.7 kph \u00b7 Gust 46.0 kph \u00b7 Visibility 11.4 km",
-              "timestamp": "2025-05-06T17:00:00"
-            }
-          ],
-          "allowedActions": [
-            "HOLD_LAUNCH",
-            "DEFER_ORDER",
-            "REASSIGN_ORDER",
-            "CUSTOMER_OUTREACH"
-          ],
-          "createdAt": "2025-05-06T17:45:00",
+          "createdAt": "2025-05-06T17:43:00",
           "launchBlocking": true,
           "humanDecisionRequired": true,
           "status": "open"
@@ -3641,6 +3645,8 @@
       "label": "Tether variance",
       "description": "ZIP-US-019 differs from its historical baseline",
       "now": "2025-06-06T11:35:00",
+      "timelineStart": "2025-06-06T11:00:00",
+      "timelineEnd": "2025-06-06T11:35:00",
       "generatedFrom": [
         "commercial_delivery_operations.csv",
         "commercial_orders.csv",
@@ -5414,7 +5420,7 @@
             "OPEN_OPERATOR_REVIEW",
             "REMOVE_INVALID_ASSIGNMENT"
           ],
-          "createdAt": "2025-06-06T11:35:00",
+          "createdAt": "2025-06-06T11:04:00",
           "launchBlocking": false,
           "humanDecisionRequired": true,
           "status": "open"
@@ -5449,7 +5455,7 @@
             "OPEN_OPERATOR_REVIEW",
             "RESTRICT_AND_OPEN_MAINTENANCE_REVIEW"
           ],
-          "createdAt": "2025-06-06T11:35:00",
+          "createdAt": "2025-06-06T08:26:56",
           "launchBlocking": false,
           "humanDecisionRequired": true,
           "status": "open"
@@ -5461,6 +5467,8 @@
       "label": "Merchant readiness",
       "description": "Pasta Garden readiness uncertainty",
       "now": "2025-04-24T12:25:00",
+      "timelineStart": "2025-04-24T12:00:00",
+      "timelineEnd": "2025-04-24T12:25:00",
       "generatedFrom": [
         "commercial_delivery_operations.csv",
         "commercial_orders.csv",
@@ -7145,7 +7153,7 @@
             "REESTIMATE_PROMISE_FROM_ACTUAL_READY",
             "OPEN_OPERATOR_REVIEW"
           ],
-          "createdAt": "2025-04-24T12:25:00",
+          "createdAt": "2025-04-24T12:20:00",
           "launchBlocking": true,
           "humanDecisionRequired": true,
           "status": "open"
@@ -7175,7 +7183,7 @@
             "CUSTOMER_OUTREACH",
             "OPEN_OPERATOR_REVIEW"
           ],
-          "createdAt": "2025-04-24T12:25:00",
+          "createdAt": "2025-04-24T09:58:12",
           "launchBlocking": false,
           "humanDecisionRequired": true,
           "status": "open"
