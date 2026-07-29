@@ -13,6 +13,7 @@ import {
   CloudSun,
   Database,
   Gauge,
+  History,
   ListFilter,
   MapPin,
   MessageSquare,
@@ -31,8 +32,9 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import replayData from "./data/live-scenarios.json";
+import { HistoryWorkspace } from "./history-workspace";
 
-type View = "fleet" | "orders" | "issues";
+type View = "fleet" | "orders" | "issues" | "history";
 
 type Evidence = {
   id: string;
@@ -158,6 +160,12 @@ type RecommendationResult =
     source: "openai" | "policy_engine";
     evidenceIds: string[];
     policyRuleIds: string[];
+    decisionSummary: string;
+    toolsUsed: Array<{
+      name: string;
+      summary: string;
+      evidenceCount: number;
+    }>;
     humanDecisionRequired: true;
     coordination: {
       required: boolean;
@@ -194,6 +202,8 @@ type ChatMessage = {
 const scenarios = replayData.scenarios as Scenario[];
 const REPLAY_TICK_MS = 750;
 const DEFAULT_REPLAY_SPEED = 1;
+const ISSUE_TICKETS_KEY = "zipline-issue-tickets-v1";
+const ISSUE_MESSAGES_KEY = "zipline-issue-messages-v1";
 
 const statusLabels: Record<string, string> = {
   in_flight: "In flight",
@@ -282,6 +292,9 @@ function buildImmediateRecommendation(issue: Issue): RecommendationResult {
     source: "policy_engine",
     evidenceIds: issue.evidence.map((item) => item.id),
     policyRuleIds: issue.ruleIds,
+    decisionSummary:
+      "Selected the first action allowed by the deterministic policy result. Connect OPENAI_API_KEY to enable autonomous tool selection.",
+    toolsUsed: [],
     humanDecisionRequired: true,
     coordination: {
       required: actionId !== "NO_RECOMMENDATION_INSUFFICIENT_EVIDENCE",
@@ -463,7 +476,8 @@ export function OperationsDashboard() {
   const [recommendationLoading, setRecommendationLoading] = useState<Record<string, boolean>>({});
   const [ticketRecords, setTicketRecords] = useState<Record<string, TicketRecord>>({});
   const [messagesByIssue, setMessagesByIssue] = useState<Record<string, ChatMessage[]>>({});
-  const [workflowBusy, setWorkflowBusy] = useState<Record<string, boolean>>({});
+  const [workflowBusy] = useState<Record<string, boolean>>({});
+  const [workflowLoaded, setWorkflowLoaded] = useState(false);
   const recommendationRequests = useRef(new Set<string>());
   const previousReplayTime = useRef(Date.parse(unifiedScenario.timelineStart));
   const notifiedIssueIds = useRef(
@@ -636,51 +650,56 @@ export function OperationsDashboard() {
   }, [activeIssueIdsKey]);
 
   useEffect(() => {
-    if (!activeIssues.length) return;
-    let cancelled = false;
-
-    async function syncWorkflow() {
-      try {
-        await fetch("/api/issues", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            kind: "sync",
-            scenarioId: scenario.id,
-            issueIds: activeIssues.map((issue) => issue.id),
-          }),
-        });
-        const response = await fetch(
-          `/api/issues?scenarioId=${encodeURIComponent(scenario.id)}`,
-        );
-        if (!response.ok) throw new Error("Issue workflow request failed");
-        const payload = (await response.json()) as {
-          tickets: TicketRecord[];
-          messages: ChatMessage[];
-        };
-        if (cancelled) return;
-        setTicketRecords((current) => ({
-          ...current,
-          ...Object.fromEntries(payload.tickets.map((ticket) => [ticket.issueId, ticket])),
-        }));
-        const grouped = payload.messages.reduce<Record<string, ChatMessage[]>>(
-          (result, message) => {
-            (result[message.issueId] ??= []).push(message);
-            return result;
-          },
-          {},
-        );
-        setMessagesByIssue((current) => ({ ...current, ...grouped }));
-      } catch {
-        // The board remains usable optimistically if persistence is temporarily unavailable.
+    try {
+      const storedTickets = window.localStorage.getItem(ISSUE_TICKETS_KEY);
+      const storedMessages = window.localStorage.getItem(ISSUE_MESSAGES_KEY);
+      if (storedTickets) {
+        const parsed = JSON.parse(storedTickets) as Record<string, TicketRecord>;
+        if (parsed && typeof parsed === "object") setTicketRecords(parsed);
       }
+      if (storedMessages) {
+        const parsed = JSON.parse(storedMessages) as Record<string, ChatMessage[]>;
+        if (parsed && typeof parsed === "object") setMessagesByIssue(parsed);
+      }
+    } catch {
+      setTicketRecords({});
+      setMessagesByIssue({});
+    } finally {
+      setWorkflowLoaded(true);
     }
+  }, []);
 
-    void syncWorkflow();
-    return () => {
-      cancelled = true;
-    };
-  }, [activeIssueIdsKey, scenario.id]);
+  useEffect(() => {
+    if (!workflowLoaded) return;
+    setTicketRecords((current) => {
+      const next = { ...current };
+      let changed = false;
+      for (const issue of activeIssues) {
+        if (next[issue.id]) continue;
+        next[issue.id] = {
+          issueId: issue.id,
+          scenarioId: scenario.id,
+          status: "new",
+          owner: "Unassigned",
+          createdAt: issue.createdAt,
+          updatedAt: issue.createdAt,
+          resolvedAt: null,
+        };
+        changed = true;
+      }
+      return changed ? next : current;
+    });
+  }, [activeIssueIdsKey, activeIssues, scenario.id, workflowLoaded]);
+
+  useEffect(() => {
+    if (!workflowLoaded) return;
+    window.localStorage.setItem(ISSUE_TICKETS_KEY, JSON.stringify(ticketRecords));
+  }, [ticketRecords, workflowLoaded]);
+
+  useEffect(() => {
+    if (!workflowLoaded) return;
+    window.localStorage.setItem(ISSUE_MESSAGES_KEY, JSON.stringify(messagesByIssue));
+  }, [messagesByIssue, workflowLoaded]);
 
   const filteredDrones = useMemo(() => {
     const query = fleetQuery.trim().toLowerCase();
@@ -783,22 +802,10 @@ export function OperationsDashboard() {
     }
   }
 
-  async function ensureTicketStored(issueId: string) {
-    await fetch("/api/issues", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        kind: "sync",
-        scenarioId: scenario.id,
-        issueIds: [issueId],
-      }),
-    });
-  }
-
   async function updateTicketStatus(issueId: string, status: TicketStatus) {
     const now = new Date().toISOString();
     const previous = ticketRecords[issueId];
-    const optimistic: TicketRecord = {
+    const updated: TicketRecord = {
       issueId,
       scenarioId: scenario.id,
       status,
@@ -807,35 +814,7 @@ export function OperationsDashboard() {
       updatedAt: now,
       resolvedAt: status === "resolved" ? now : null,
     };
-    setTicketRecords((current) => ({ ...current, [issueId]: optimistic }));
-    setWorkflowBusy((current) => ({ ...current, [issueId]: true }));
-    try {
-      await ensureTicketStored(issueId);
-      const response = await fetch("/api/issues", {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          issueId,
-          status,
-          owner: optimistic.owner,
-        }),
-      });
-      if (!response.ok) throw new Error("Ticket status update failed");
-      const payload = (await response.json()) as { ticket: TicketRecord };
-      setTicketRecords((current) => ({
-        ...current,
-        [issueId]: payload.ticket,
-      }));
-    } catch {
-      setTicketRecords((current) => {
-        const next = { ...current };
-        if (previous) next[issueId] = previous;
-        else delete next[issueId];
-        return next;
-      });
-    } finally {
-      setWorkflowBusy((current) => ({ ...current, [issueId]: false }));
-    }
+    setTicketRecords((current) => ({ ...current, [issueId]: updated }));
   }
 
   async function sendIssueMessage(
@@ -843,9 +822,8 @@ export function OperationsDashboard() {
     channel: string,
     body: string,
   ) {
-    const tempId = -Date.now();
-    const optimistic: ChatMessage = {
-      id: tempId,
+    const message: ChatMessage = {
+      id: Date.now(),
       issueId,
       channel,
       senderName: "You",
@@ -855,42 +833,9 @@ export function OperationsDashboard() {
     };
     setMessagesByIssue((current) => ({
       ...current,
-      [issueId]: [...(current[issueId] ?? []), optimistic],
+      [issueId]: [...(current[issueId] ?? []), message],
     }));
-    setWorkflowBusy((current) => ({ ...current, [issueId]: true }));
-    try {
-      await ensureTicketStored(issueId);
-      const response = await fetch("/api/issues", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          kind: "message",
-          issueId,
-          channel,
-          body,
-          senderName: "You",
-          senderRole: "operator",
-        }),
-      });
-      if (!response.ok) throw new Error("Message send failed");
-      const payload = (await response.json()) as { message: ChatMessage };
-      setMessagesByIssue((current) => ({
-        ...current,
-        [issueId]: (current[issueId] ?? []).map((message) =>
-          message.id === tempId ? payload.message : message,
-        ),
-      }));
-      await updateTicketStatus(issueId, "waiting");
-    } catch {
-      setMessagesByIssue((current) => ({
-        ...current,
-        [issueId]: (current[issueId] ?? []).filter(
-          (message) => message.id !== tempId,
-        ),
-      }));
-    } finally {
-      setWorkflowBusy((current) => ({ ...current, [issueId]: false }));
-    }
+    await updateTicketStatus(issueId, "waiting");
   }
 
   function openIssues(issueId?: string) {
@@ -934,34 +879,48 @@ export function OperationsDashboard() {
             Issues
             <span className="nav-badge">{activeIssues.length}</span>
           </button>
+          <span className="nav-section-label">ANALYSIS</span>
+          <button
+            className={view === "history" ? "active" : ""}
+            onClick={() => setView("history")}
+          >
+            <History size={19} />
+            History
+          </button>
         </nav>
 
       </aside>
 
       <main className="main-area">
-        <header className="topbar">
-          <strong className="replay-title">Replay</strong>
+        <header className={`topbar ${view === "history" ? "history-topbar" : ""}`}>
+          <strong className="replay-title">
+            {view === "history" ? "History" : "Replay"}
+          </strong>
 
-          <div className="replay-clock">
-            <Clock3 size={16} />
-            <div>
-              <span>{formatTime(new Date(replayTime).toISOString(), true)}</span>
-              <small>Replay clock</small>
-            </div>
-          </div>
+          {view !== "history" && (
+            <>
+              <div className="replay-clock">
+                <Clock3 size={16} />
+                <div>
+                  <span>{formatTime(new Date(replayTime).toISOString(), true)}</span>
+                  <small>Replay clock</small>
+                </div>
+              </div>
 
-          <button className="replay-action" onClick={toggleReplay}>
-            {isPlaying ? (
-              <Pause size={15} fill="currentColor" />
-            ) : (
-              <Play size={15} fill="currentColor" />
-            )}
-            {isPlaying
-              ? "Pause"
-              : replayIndex >= replayEvents.length - 1
-                ? "Replay again"
-                : "Resume"}
-          </button>
+              <button className="replay-action" onClick={toggleReplay}>
+                {isPlaying ? (
+                  <Pause size={15} fill="currentColor" />
+                ) : (
+                  <Play size={15} fill="currentColor" />
+                )}
+                {isPlaying
+                  ? "Pause"
+                  : replayIndex >= replayEvents.length - 1
+                    ? "Replay again"
+                    : "Resume"}
+              </button>
+            </>
+          )}
 
           <button
             className="notification-button"
@@ -973,44 +932,46 @@ export function OperationsDashboard() {
           </button>
         </header>
 
-        <section className="timeline-control" aria-label="Replay timeline">
-          <button
-            className="timeline-reset"
-            onClick={restartReplay}
-            aria-label="Restart replay"
-            title="Restart replay"
-          >
-            <RotateCcw size={15} />
-          </button>
-          <div className="timeline-scrubber">
-            <input
-              type="range"
-              min={0}
-              max={replayEvents.length - 1}
-              step={1}
-              value={replayIndex}
-              onChange={(event) => seekReplay(Number(event.target.value))}
-              aria-label="Replay position"
-              style={{ "--replay-progress": `${replayProgress}%` } as React.CSSProperties}
-            />
-            <div>
-              <span>{formatTime(scenario.timelineStart, true)}</span>
-              <span>{formatTime(scenario.timelineEnd, true)}</span>
-            </div>
-          </div>
-          <label className="speed-control">
-            <span>Speed</span>
-            <select
-              value={replaySpeed}
-              onChange={(event) => setReplaySpeed(Number(event.target.value))}
+        {view !== "history" && (
+          <section className="timeline-control" aria-label="Replay timeline">
+            <button
+              className="timeline-reset"
+              onClick={restartReplay}
+              aria-label="Restart replay"
+              title="Restart replay"
             >
-              <option value={1}>1×</option>
-              <option value={3}>3×</option>
-              <option value={10}>10×</option>
-            </select>
-            <ChevronDown size={14} />
-          </label>
-        </section>
+              <RotateCcw size={15} />
+            </button>
+            <div className="timeline-scrubber">
+              <input
+                type="range"
+                min={0}
+                max={replayEvents.length - 1}
+                step={1}
+                value={replayIndex}
+                onChange={(event) => seekReplay(Number(event.target.value))}
+                aria-label="Replay position"
+                style={{ "--replay-progress": `${replayProgress}%` } as React.CSSProperties}
+              />
+              <div>
+                <span>{formatTime(scenario.timelineStart, true)}</span>
+                <span>{formatTime(scenario.timelineEnd, true)}</span>
+              </div>
+            </div>
+            <label className="speed-control">
+              <span>Speed</span>
+              <select
+                value={replaySpeed}
+                onChange={(event) => setReplaySpeed(Number(event.target.value))}
+              >
+                <option value={1}>1×</option>
+                <option value={3}>3×</option>
+                <option value={10}>10×</option>
+              </select>
+              <ChevronDown size={14} />
+            </label>
+          </section>
+        )}
 
         {view === "fleet" && (
           <FleetView
@@ -1056,6 +1017,10 @@ export function OperationsDashboard() {
           ) : (
             <EmptyIssues />
           ))}
+
+        {view === "history" && (
+          <HistoryWorkspace />
+        )}
       </main>
 
       {selectedDrone && (
@@ -1462,6 +1427,7 @@ function IssuesView({
 }) {
   const [draggedIssueId, setDraggedIssueId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [chatOpen, setChatOpen] = useState(false);
   const activeRecommendation =
     recommendation ?? buildImmediateRecommendation(selectedIssue);
   const selectedTicket = tickets[selectedIssue.id];
@@ -1515,6 +1481,84 @@ function IssuesView({
       </div>
 
       <div className="issue-workspace">
+        <aside className="panel issue-conversation-panel" aria-label="Issue conversations">
+          <div className="issue-conversation-title">
+            <MessageSquare size={15} />
+            <strong>Issue chats</strong>
+          </div>
+
+          <div className="issue-conversation-section">
+            <div className="issue-conversation-section-title">
+              <span>Active</span>
+              <span>
+                {
+                  issues.filter(
+                    (issue) => (tickets[issue.id]?.status ?? "new") !== "resolved",
+                  ).length
+                }
+              </span>
+            </div>
+            <div className="issue-conversation-list">
+              {issues
+                .filter(
+                  (issue) => (tickets[issue.id]?.status ?? "new") !== "resolved",
+                )
+                .map((issue) => (
+                  <button
+                    className={issue.id === selectedIssue.id ? "selected" : ""}
+                    key={issue.id}
+                    onClick={() => {
+                      onSelect(issue.id);
+                      setChatOpen(true);
+                    }}
+                  >
+                    <span className={`priority-dot priority-${issue.priority.toLowerCase()}`} />
+                    <span>
+                      <strong>{issue.title}</strong>
+                      <small>
+                        {messages[issue.id]?.length ?? 0} messages ·{" "}
+                        {displayService(tickets[issue.id]?.status ?? "new")}
+                      </small>
+                    </span>
+                  </button>
+                ))}
+            </div>
+          </div>
+
+          <div className="issue-conversation-section issue-conversation-archived">
+            <div className="issue-conversation-section-title">
+              <span>Archived</span>
+              <span>
+                {
+                  issues.filter(
+                    (issue) => tickets[issue.id]?.status === "resolved",
+                  ).length
+                }
+              </span>
+            </div>
+            <div className="issue-conversation-list">
+              {issues
+                .filter((issue) => tickets[issue.id]?.status === "resolved")
+                .map((issue) => (
+                  <button
+                    className={issue.id === selectedIssue.id ? "selected" : ""}
+                    key={issue.id}
+                    onClick={() => {
+                      onSelect(issue.id);
+                      setChatOpen(true);
+                    }}
+                  >
+                    <Archive size={13} />
+                    <span>
+                      <strong>{issue.title}</strong>
+                      <small>{messages[issue.id]?.length ?? 0} messages</small>
+                    </span>
+                  </button>
+                ))}
+            </div>
+          </div>
+        </aside>
+
         <section className="kanban-shell" aria-label="Issue workflow board">
           <div className="kanban-board">
             {columns.map((column) => {
@@ -1635,12 +1679,72 @@ function IssuesView({
               </span>
               <div>
                 <strong>Recommendation</strong>
-                {loading && <small>Updating…</small>}
+                <small>
+                  {loading
+                    ? "Updating…"
+                    : activeRecommendation.source === "openai"
+                      ? "GPT-5.4-mini selection · server-validated"
+                      : "Deterministic policy engine"}
+                </small>
               </div>
             </div>
             <div className="recommended-action recommended-action-primary">
               <strong>{displayService(activeRecommendation.actionId)}</strong>
             </div>
+            <p className="recommendation-decision">
+              {activeRecommendation.decisionSummary}
+            </p>
+            <div className="recommendation-source-details">
+              <details>
+                <summary>
+                  <ShieldAlert size={13} />
+                  Policy
+                  <span>{activeRecommendation.policyRuleIds.length}</span>
+                  <ChevronDown size={12} />
+                </summary>
+                <div>
+                  {activeRecommendation.policyRuleIds.map((ruleId) => (
+                    <code key={ruleId}>{ruleId}</code>
+                  ))}
+                </div>
+              </details>
+              <details>
+                <summary>
+                  <Database size={13} />
+                  Evidence
+                  <span>{activeRecommendation.evidenceIds.length}</span>
+                  <ChevronDown size={12} />
+                </summary>
+                <div>
+                  {activeRecommendation.evidenceIds.map((evidenceId) => (
+                    <code key={evidenceId}>{evidenceId}</code>
+                  ))}
+                </div>
+              </details>
+            </div>
+            <div className="recommendation-tool-trace">
+              {activeRecommendation.toolsUsed.length ? (
+                activeRecommendation.toolsUsed.map((tool, index) => (
+                  <span key={`${tool.name}-${index}`}>
+                    {displayService(tool.name)}
+                    <small>{tool.evidenceCount} sources</small>
+                  </span>
+                ))
+              ) : activeRecommendation.source === "openai" ? (
+                <span>
+                  GPT-5.4-mini selection
+                  <small>Validated issue evidence</small>
+                </span>
+              ) : (
+                <span>
+                  Deterministic policy engine
+                  <small>Issue evidence only</small>
+                </span>
+              )}
+            </div>
+            <small className="recommendation-safety">
+              Human approval required. This does not authorize flight or execute an action.
+            </small>
             <div className="recommendation-meta">
               <button onClick={onRefresh} disabled={loading}>
                 <RefreshCw className={loading ? "spin" : ""} size={13} />
@@ -1697,31 +1801,14 @@ function IssuesView({
                 <MessageSquare size={16} />
                 <strong>Issue chat</strong>
               </div>
-              <span>{selectedMessages.length} messages</span>
+              <button type="button" onClick={() => setChatOpen(true)}>
+                Open chat · {selectedMessages.length}
+              </button>
             </div>
-            <div className="thread-messages">
-              {selectedMessages.map((message) => (
-                <div className="thread-message" key={message.id}>
-                  <span className="message-avatar">
-                    {message.senderName.slice(0, 1).toUpperCase()}
-                  </span>
-                  <div>
-                    <span className="message-byline">
-                      <strong>{message.senderName}</strong>
-                      <small>
-                        {message.channel} · {formatTime(message.createdAt)}
-                      </small>
-                    </span>
-                    <p>{message.body}</p>
-                  </div>
-                </div>
-              ))}
-              {!selectedMessages.length && (
-                <div className="thread-empty">
-                  <MessageSquare size={18} />
-                  <span>No messages</span>
-                </div>
-              )}
+            <div className="issue-chat-preview">
+              {selectedMessages.length
+                ? selectedMessages[selectedMessages.length - 1].body
+                : "No messages yet."}
             </div>
           </section>
 
@@ -1757,6 +1844,76 @@ function IssuesView({
           </details>
         </aside>
       </div>
+
+      {chatOpen && (
+        <div className="issue-chat-layer" role="dialog" aria-modal="true">
+          <button
+            className="issue-chat-backdrop"
+            type="button"
+            onClick={() => setChatOpen(false)}
+            aria-label="Close issue chat"
+          />
+          <section className="issue-chat-window">
+            <header>
+              <div>
+                <span>{selectedIssue.id}</span>
+                <h2>{selectedIssue.title}</h2>
+              </div>
+              <button type="button" onClick={() => setChatOpen(false)} aria-label="Close chat">
+                <X size={18} />
+              </button>
+            </header>
+
+            <div className="issue-chat-window-messages">
+              {selectedMessages.map((message) => (
+                <article className="thread-message" key={message.id}>
+                  <span className="message-avatar">
+                    {message.senderName.slice(0, 1).toUpperCase()}
+                  </span>
+                  <div>
+                    <span className="message-byline">
+                      <strong>{message.senderName}</strong>
+                      <small>
+                        {message.channel} · {formatTime(message.createdAt)}
+                      </small>
+                    </span>
+                    <p>{message.body}</p>
+                  </div>
+                </article>
+              ))}
+              {!selectedMessages.length && (
+                <div className="thread-empty">
+                  <MessageSquare size={20} />
+                  <span>No messages yet</span>
+                </div>
+              )}
+            </div>
+
+            <footer>
+              <textarea
+                value={draft}
+                onChange={(event) =>
+                  setDrafts((current) => ({
+                    ...current,
+                    [selectedIssue.id]: event.target.value,
+                  }))
+                }
+                rows={3}
+                placeholder="Write a message"
+                aria-label="Issue chat message"
+              />
+              <button
+                type="button"
+                onClick={() => void sendDraft()}
+                disabled={!draft.trim() || Boolean(workflowBusy[selectedIssue.id])}
+              >
+                <Send size={15} />
+                Send
+              </button>
+            </footer>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

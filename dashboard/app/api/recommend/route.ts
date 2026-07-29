@@ -1,9 +1,16 @@
 import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
 import {
+  executeHistoryTool,
+  HISTORY_TOOL_DEFINITIONS,
+  type HistoryEvidence,
+  type HistoryToolResult,
+} from "../../lib/history-tools";
+import {
   RESOLUTION_ACTIONS,
   type CoordinationPlan,
   type RecommendationIssue,
   type RecommendationResult,
+  type RecommendationToolTrace,
   type ResolutionAction,
 } from "../../lib/recommendations";
 
@@ -11,13 +18,19 @@ type ModelSelection = {
   primary_action_id: ResolutionAction;
   evidence_ids: string[];
   policy_rule_ids: string[];
-  draft_message: string;
   human_decision_required: true;
+};
+
+type ModelRun = {
+  selection: ModelSelection;
+  toolsUsed: RecommendationToolTrace[];
+  additionalEvidence: HistoryEvidence[];
+  additionalPolicyRuleIds: string[];
 };
 
 const GraphState = Annotation.Root({
   issue: Annotation<RecommendationIssue>,
-  selection: Annotation<ModelSelection | null>({
+  selection: Annotation<ModelRun | null>({
     default: () => null,
     reducer: (_current, update) => update,
   }),
@@ -94,7 +107,6 @@ function extractOutputText(payload: unknown): string | null {
 function buildCoordinationPlan(
   issue: RecommendationIssue,
   action: ResolutionAction,
-  modelDraft?: string,
 ): CoordinationPlan {
   let contactName = "Operations control";
   let contactRole = "Duty operator";
@@ -147,140 +159,202 @@ function buildCoordinationPlan(
     contactName,
     contactRole,
     subject: `${issue.priority} action needed · ${issue.entity}`,
-    draftMessage: modelDraft?.trim() || fallbackDraft,
+    draftMessage: fallbackDraft,
   };
+}
+
+function renderDecisionSummary(
+  action: ResolutionAction,
+  _evidenceIds: string[],
+  _policyRuleIds: string[],
+) {
+  if (action === "NO_RECOMMENDATION_INSUFFICIENT_EVIDENCE") {
+    return "The available evidence is insufficient. A human operator must investigate before taking action.";
+  }
+  return "Review this recommendation against the cited policy and evidence before applying it.";
 }
 
 async function chooseWithOpenAI(
   issue: RecommendationIssue,
-): Promise<ModelSelection | null> {
+): Promise<ModelRun | null> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return null;
 
-  const evidenceIds = issue.evidence.map((item) => item.id);
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${apiKey}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      model: process.env.OPENAI_MODEL ?? "gpt-5.6-luna",
-      reasoning: { effort: "low" },
-      store: false,
-      max_output_tokens: 260,
-      input: [
+  const tools: unknown[] = [...HISTORY_TOOL_DEFINITIONS];
+  const input: unknown[] = [
+    {
+      role: "developer",
+      content: [
         {
-          role: "system",
-          content: [
-            {
-              type: "input_text",
-              text:
-                "You are a constrained operations recommendation selector. " +
-                "Policy decisions and priority are already final. Select exactly one allowed action. " +
-                "Use only supplied evidence and triggered rule IDs. Never authorize, clear, release, " +
-                "or declare a flight safe. Every result requires a human decision. " +
-                "Draft one direct coordination message, maximum 35 words. Do not invent names, facts, " +
-                "completion states, or promises.",
-            },
-          ],
-        },
-        {
-          role: "user",
-          content: [
-            {
-              type: "input_text",
-              text: JSON.stringify({
-                issue_id: issue.id,
-                priority: issue.priority,
-                category: issue.category,
-                title: issue.title,
-                summary: issue.summary,
-                launch_blocking: issue.launchBlocking,
-                allowed_action_ids: issue.allowedActions,
-                triggered_policy_rule_ids: issue.ruleIds,
-                evidence: issue.evidence,
-              }),
-            },
-          ],
+          type: "input_text",
+          text:
+            "You are a constrained operations recommendation agent. Policy priority and the allowed action list are final. " +
+            "Decide whether the supplied issue evidence is sufficient or whether to use historical structured queries, incident search, " +
+            "or operating-policy search before choosing exactly one allowed action. " +
+            "Use structured history for numeric patterns, incident search for comparable events, and policy search for authoritative rules. " +
+            "Never invent facts or use an evidence or policy ID that was not supplied or returned by a tool. " +
+            "If the available evidence does not support a resolution, select NO_RECOMMENDATION_INSUFFICIENT_EVIDENCE when it is allowed. " +
+            "Never authorize, clear, release, or declare a flight safe. Every result requires a human decision. " +
+            "Return only the selected action and the exact supporting IDs; the server writes the operator-facing explanation.",
         },
       ],
-      text: {
-        format: {
-          type: "json_schema",
-          name: "validated_resolution_selection",
-          strict: true,
-          schema: {
-            type: "object",
-            properties: {
-              primary_action_id: {
-                type: "string",
-                enum: issue.allowedActions,
+    },
+    {
+      role: "user",
+      content: [
+        {
+          type: "input_text",
+          text: JSON.stringify({
+            issue_id: issue.id,
+            priority: issue.priority,
+            category: issue.category,
+            title: issue.title,
+            summary: issue.summary,
+            entity: issue.entity,
+            launch_blocking: issue.launchBlocking,
+            allowed_action_ids: issue.allowedActions,
+            triggered_policy_rule_ids: issue.ruleIds,
+            supplied_evidence: issue.evidence,
+          }),
+        },
+      ],
+    },
+  ];
+  const toolResults: HistoryToolResult[] = [];
+
+  for (let round = 0; round < 4; round += 1) {
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${apiKey}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: process.env.OPENAI_MODEL ?? "gpt-5.4-mini",
+        reasoning: { effort: "low" },
+        store: false,
+        max_output_tokens: 520,
+        input,
+        tools,
+        tool_choice: "auto",
+        text: {
+          format: {
+            type: "json_schema",
+            name: "validated_resolution_selection",
+            strict: true,
+            schema: {
+              type: "object",
+              properties: {
+                primary_action_id: {
+                  type: "string",
+                  enum: issue.allowedActions,
+                },
+                evidence_ids: {
+                  type: "array",
+                  items: { type: "string" },
+                  minItems: 1,
+                },
+                policy_rule_ids: {
+                  type: "array",
+                  items: { type: "string" },
+                  minItems: 1,
+                },
+                human_decision_required: {
+                  type: "boolean",
+                  const: true,
+                },
               },
-              evidence_ids: {
-                type: "array",
-                items: { type: "string", enum: evidenceIds },
-                minItems: 1,
-              },
-              policy_rule_ids: {
-                type: "array",
-                items: { type: "string", enum: issue.ruleIds },
-                minItems: 1,
-              },
-              draft_message: {
-                type: "string",
-                minLength: 20,
-                maxLength: 240,
-              },
-              human_decision_required: {
-                type: "boolean",
-                const: true,
-              },
+              required: [
+                "primary_action_id",
+                "evidence_ids",
+                "policy_rule_ids",
+                "human_decision_required",
+              ],
+              additionalProperties: false,
             },
-            required: [
-              "primary_action_id",
-              "evidence_ids",
-              "policy_rule_ids",
-              "draft_message",
-              "human_decision_required",
-            ],
-            additionalProperties: false,
           },
         },
-      },
-    }),
-  });
+      }),
+    });
+    if (!response.ok) return null;
+    const raw = (await response.json()) as {
+      output?: Array<Record<string, unknown>>;
+    };
+    const calls = (raw.output ?? []).filter(
+      (item) => item.type === "function_call",
+    );
+    if (calls.length) {
+      input.push(...(raw.output ?? []));
+      for (const call of calls) {
+        let args: Record<string, unknown> = {};
+        try {
+          args = JSON.parse(String(call.arguments ?? "{}")) as Record<
+            string,
+            unknown
+          >;
+        } catch {
+          args = {};
+        }
+        const result = await executeHistoryTool(String(call.name ?? ""), args);
+        toolResults.push(result);
+        input.push({
+          type: "function_call_output",
+          call_id: String(call.call_id ?? ""),
+          output: JSON.stringify(result),
+        });
+      }
+      continue;
+    }
 
-  if (!response.ok) return null;
-  const raw = await response.json();
-  const text = extractOutputText(raw);
-  if (!text) return null;
-
-  let selection: ModelSelection;
-  try {
-    selection = JSON.parse(text) as ModelSelection;
-  } catch {
-    return null;
+    const text = extractOutputText(raw);
+    if (!text) return null;
+    let selection: ModelSelection;
+    try {
+      selection = JSON.parse(text) as ModelSelection;
+    } catch {
+      return null;
+    }
+    const additionalEvidence = [
+      ...toolResults.flatMap((result) => result.evidence),
+    ];
+    const allowedActions = new Set(issue.allowedActions);
+    const allowedEvidence = new Set([
+      ...issue.evidence.map((item) => item.id),
+      ...additionalEvidence.map((item) => item.id),
+    ]);
+    const additionalPolicyRuleIds = toolResults.flatMap(
+      (result) => result.policyRuleIds,
+    );
+    const allowedRules = new Set([
+      ...issue.ruleIds,
+      ...additionalPolicyRuleIds,
+    ]);
+    if (
+      !allowedActions.has(selection.primary_action_id) ||
+      selection.human_decision_required !== true ||
+      !Array.isArray(selection.evidence_ids) ||
+      !selection.evidence_ids.length ||
+      !selection.evidence_ids.every((id) => allowedEvidence.has(id)) ||
+      !Array.isArray(selection.policy_rule_ids) ||
+      !selection.policy_rule_ids.length ||
+      !selection.policy_rule_ids.every((id) => allowedRules.has(id))
+    ) {
+      return null;
+    }
+    return {
+      selection,
+      additionalEvidence,
+      additionalPolicyRuleIds,
+      toolsUsed: [
+        ...toolResults.map((result) => ({
+          name: result.tool,
+          summary: result.summary,
+          evidenceCount: result.evidence.length,
+        })),
+      ],
+    };
   }
-
-  const allowedActions = new Set(issue.allowedActions);
-  const allowedEvidence = new Set(evidenceIds);
-  const allowedRules = new Set(issue.ruleIds);
-  if (
-    !allowedActions.has(selection.primary_action_id) ||
-    selection.human_decision_required !== true ||
-    !Array.isArray(selection.evidence_ids) ||
-    !selection.evidence_ids.length ||
-    !selection.evidence_ids.every((id) => allowedEvidence.has(id)) ||
-    !Array.isArray(selection.policy_rule_ids) ||
-    !selection.policy_rule_ids.length ||
-    !selection.policy_rule_ids.every((id) => allowedRules.has(id)) ||
-    typeof selection.draft_message !== "string" ||
-    selection.draft_message.trim().length < 20
-  ) {
-    return null;
-  }
-  return selection;
+  return null;
 }
 
 const recommendationGraph = new StateGraph(GraphState)
@@ -300,6 +374,12 @@ const recommendationGraph = new StateGraph(GraphState)
           source: "policy_engine" as const,
           evidenceIds: state.issue.evidence.map((item) => item.id),
           policyRuleIds: state.issue.ruleIds,
+          decisionSummary: renderDecisionSummary(
+            actionId,
+            state.issue.evidence.map((item) => item.id),
+            state.issue.ruleIds,
+          ),
+          toolsUsed: [],
           humanDecisionRequired: true as const,
           coordination: buildCoordinationPlan(state.issue, actionId),
         },
@@ -308,15 +388,20 @@ const recommendationGraph = new StateGraph(GraphState)
     return {
       result: {
         status: "ready" as const,
-        actionId: state.selection.primary_action_id,
+        actionId: state.selection.selection.primary_action_id,
         source: "openai" as const,
-        evidenceIds: state.selection.evidence_ids,
-        policyRuleIds: state.selection.policy_rule_ids,
+        evidenceIds: state.selection.selection.evidence_ids,
+        policyRuleIds: state.selection.selection.policy_rule_ids,
+        decisionSummary: renderDecisionSummary(
+          state.selection.selection.primary_action_id,
+          state.selection.selection.evidence_ids,
+          state.selection.selection.policy_rule_ids,
+        ),
+        toolsUsed: state.selection.toolsUsed,
         humanDecisionRequired: true as const,
         coordination: buildCoordinationPlan(
           state.issue,
-          state.selection.primary_action_id,
-          state.selection.draft_message,
+          state.selection.selection.primary_action_id,
         ),
       },
     };
@@ -339,6 +424,13 @@ export async function POST(request: Request) {
         source: "policy_engine",
         evidenceIds: issue.evidence.map((item) => item.id),
         policyRuleIds: issue.ruleIds,
+        decisionSummary:
+          renderDecisionSummary(
+            actionId,
+            issue.evidence.map((item) => item.id),
+            issue.ruleIds,
+          ),
+        toolsUsed: [],
         humanDecisionRequired: true,
         coordination: buildCoordinationPlan(issue, actionId),
       } satisfies RecommendationResult);
@@ -351,6 +443,13 @@ export async function POST(request: Request) {
         source: "policy_engine",
         evidenceIds: issue.evidence.map((item) => item.id),
         policyRuleIds: issue.ruleIds,
+        decisionSummary:
+          renderDecisionSummary(
+            issue.allowedActions[0],
+            issue.evidence.map((item) => item.id),
+            issue.ruleIds,
+          ),
+        toolsUsed: [],
         humanDecisionRequired: true,
         coordination: buildCoordinationPlan(issue, issue.allowedActions[0]),
       },

@@ -48,12 +48,20 @@ export type CoordinationPlan = {
   draftMessage: string;
 };
 
+export type RecommendationToolTrace = {
+  name: string;
+  summary: string;
+  evidenceCount: number;
+};
+
 export type RecommendationResult = {
   status: "ready";
   actionId: ResolutionAction;
   source: "openai" | "policy_engine";
   evidenceIds: string[];
   policyRuleIds: string[];
+  decisionSummary: string;
+  toolsUsed: RecommendationToolTrace[];
   humanDecisionRequired: true;
   coordination: CoordinationPlan;
 };
