@@ -91,13 +91,6 @@ function extractOutputText(payload: unknown): string | null {
   return null;
 }
 
-function humanizeAction(action: ResolutionAction) {
-  return action
-    .toLowerCase()
-    .replaceAll("_", " ")
-    .replace(/\b\w/g, (character) => character.toUpperCase());
-}
-
 function buildCoordinationPlan(
   issue: RecommendationIssue,
   action: ResolutionAction,
@@ -106,8 +99,7 @@ function buildCoordinationPlan(
   let contactName = "Operations control";
   let contactRole = "Duty operator";
   let channel = "Ops control";
-  let instruction =
-    "Please acknowledge this issue, confirm ownership, and post the next verified update here.";
+  let instruction = "Confirm owner and ETA.";
 
   if (
     action.includes("MAINTENANCE") ||
@@ -117,8 +109,7 @@ function buildCoordinationPlan(
     contactName = "Maintenance team";
     contactRole = "Aircraft maintenance";
     channel = "Maintenance";
-    instruction =
-      "Please inspect the aircraft, acknowledge ownership, and share the next verified finding here. Do not release the aircraft; the operator must record the validated decision.";
+    instruction = `Inspect ${issue.entity}. Share findings and ETA.`;
   } else if (
     action === "REESTIMATE_PROMISE_FROM_ACTUAL_READY" ||
     action === "REQUIRE_HANDOFF_VERIFICATION"
@@ -126,8 +117,7 @@ function buildCoordinationPlan(
     contactName = "Merchant partner";
     contactRole = "Merchant operations";
     channel = "Merchant";
-    instruction =
-      "Please confirm the actual ready time, identify any blocker, and update this thread as soon as the handoff is ready for verification.";
+    instruction = `Confirm ready time and blockers for ${issue.entity}.`;
   } else if (
     action === "CUSTOMER_OUTREACH" ||
     action === "MARK_DELIVERY_EXCEPTION"
@@ -135,8 +125,7 @@ function buildCoordinationPlan(
     contactName = "Customer support";
     contactRole = "Delivery support";
     channel = "Customer support";
-    instruction =
-      "Please contact the customer with the current verified status and post the response or next follow-up time in this thread.";
+    instruction = "Update the customer and post the response.";
   } else if (
     action === "HOLD_LAUNCH" ||
     action === "DEFER_ORDER" ||
@@ -146,14 +135,11 @@ function buildCoordinationPlan(
     contactName = "Site dispatch";
     contactRole = "Flight planning";
     channel = "Dispatch";
-    instruction =
-      "Please acknowledge the operational hold, confirm the affected assignment, and post the revised plan or next review time here.";
+    instruction = "Confirm the hold and revised plan.";
   }
 
   const required = action !== "NO_RECOMMENDATION_INSUFFICIENT_EVIDENCE";
-  const fallbackDraft =
-    `Hi ${contactName} — Ops opened ${issue.id}: ${issue.title}. ` +
-    `${issue.summary} Recommended next action: ${humanizeAction(action)}. ${instruction}`;
+  const fallbackDraft = `${issue.title}: ${issue.summary} ${instruction}`;
 
   return {
     required,
@@ -194,8 +180,8 @@ async function chooseWithOpenAI(
                 "Policy decisions and priority are already final. Select exactly one allowed action. " +
                 "Use only supplied evidence and triggered rule IDs. Never authorize, clear, release, " +
                 "or declare a flight safe. Every result requires a human decision. " +
-                "Draft one concise coordination message for the team that must act. Do not invent " +
-                "names, facts, completion states, or promises. Ask for acknowledgement and a verified update.",
+                "Draft one direct coordination message, maximum 35 words. Do not invent names, facts, " +
+                "completion states, or promises.",
             },
           ],
         },
@@ -244,7 +230,7 @@ async function chooseWithOpenAI(
               draft_message: {
                 type: "string",
                 minLength: 20,
-                maxLength: 700,
+                maxLength: 240,
               },
               human_decision_required: {
                 type: "boolean",

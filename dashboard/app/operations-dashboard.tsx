@@ -11,10 +11,8 @@ import {
   CircleDot,
   Clock3,
   CloudSun,
-  Columns3,
   Database,
   Gauge,
-  History,
   ListFilter,
   MapPin,
   MessageSquare,
@@ -194,8 +192,8 @@ type ChatMessage = {
 };
 
 const scenarios = replayData.scenarios as Scenario[];
-const REPLAY_TICK_MS = 250;
-const DEFAULT_REPLAY_SPEED = 5;
+const REPLAY_TICK_MS = 750;
+const DEFAULT_REPLAY_SPEED = 1;
 
 const statusLabels: Record<string, string> = {
   in_flight: "In flight",
@@ -239,8 +237,7 @@ function buildImmediateRecommendation(issue: Issue): RecommendationResult {
   let contactName = "Operations control";
   let contactRole = "Duty operator";
   let channel = "Ops control";
-  let instruction =
-    "Please acknowledge this issue, confirm ownership, and post the next verified update here.";
+  let instruction = "Confirm owner and ETA.";
 
   if (
     actionId.includes("MAINTENANCE") ||
@@ -250,8 +247,7 @@ function buildImmediateRecommendation(issue: Issue): RecommendationResult {
     contactName = "Maintenance team";
     contactRole = "Aircraft maintenance";
     channel = "Maintenance";
-    instruction =
-      "Please inspect the aircraft, acknowledge ownership, and share the next verified finding here. Do not release the aircraft; the operator must record the validated decision.";
+    instruction = `Inspect ${issue.entity}. Share findings and ETA.`;
   } else if (
     actionId === "REESTIMATE_PROMISE_FROM_ACTUAL_READY" ||
     actionId === "REQUIRE_HANDOFF_VERIFICATION"
@@ -259,8 +255,7 @@ function buildImmediateRecommendation(issue: Issue): RecommendationResult {
     contactName = "Merchant partner";
     contactRole = "Merchant operations";
     channel = "Merchant";
-    instruction =
-      "Please confirm the actual ready time, identify any blocker, and update this thread when the handoff is ready for verification.";
+    instruction = `Confirm ready time and blockers for ${issue.entity}.`;
   } else if (
     actionId === "CUSTOMER_OUTREACH" ||
     actionId === "MARK_DELIVERY_EXCEPTION"
@@ -268,8 +263,7 @@ function buildImmediateRecommendation(issue: Issue): RecommendationResult {
     contactName = "Customer support";
     contactRole = "Delivery support";
     channel = "Customer support";
-    instruction =
-      "Please contact the customer with the current verified status and post the response or next follow-up time in this thread.";
+    instruction = "Update the customer and post the response.";
   } else if (
     actionId === "HOLD_LAUNCH" ||
     actionId === "DEFER_ORDER" ||
@@ -279,8 +273,7 @@ function buildImmediateRecommendation(issue: Issue): RecommendationResult {
     contactName = "Site dispatch";
     contactRole = "Flight planning";
     channel = "Dispatch";
-    instruction =
-      "Please acknowledge the operational hold, confirm the affected assignment, and post the revised plan or next review time here.";
+    instruction = "Confirm the hold and revised plan.";
   }
 
   return {
@@ -296,9 +289,7 @@ function buildImmediateRecommendation(issue: Issue): RecommendationResult {
       contactName,
       contactRole,
       subject: `${issue.priority} action needed · ${issue.entity}`,
-      draftMessage:
-        `Hi ${contactName} — Ops opened ${issue.id}: ${issue.title}. ` +
-        `${issue.summary} Recommended next action: ${displayService(actionId)}. ${instruction}`,
+      draftMessage: `${issue.title}: ${issue.summary} ${instruction}`,
     },
   };
 }
@@ -334,6 +325,90 @@ function projectOrderAtTime(order: Order, replayTime: number): Order | null {
     preflightChecks: status === "preflight" ? order.preflightChecks : [],
   };
 }
+
+function createUnifiedScenario(source: Scenario[]): Scenario {
+  const orderedScenarios = [...source].sort(
+    (a, b) => Date.parse(a.timelineStart) - Date.parse(b.timelineStart),
+  );
+  const orders = orderedScenarios.flatMap((item) => item.orders);
+  const issues = orderedScenarios.flatMap((item) => item.issues);
+  const weather = orderedScenarios.flatMap((item) => item.weather);
+  orders.sort((a, b) => Date.parse(a.requestedAt) - Date.parse(b.requestedAt));
+  issues.sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+
+  const statusRank: Record<string, number> = {
+    idle: 0,
+    in_flight: 1,
+    preflight: 2,
+    conflict: 3,
+    review: 4,
+    maintenance: 5,
+    grounded: 6,
+  };
+  const dronesById = new Map<string, Drone>();
+  for (const sourceScenario of orderedScenarios) {
+    for (const drone of sourceScenario.drones) {
+      const current = dronesById.get(drone.droneId);
+      if (
+        !current ||
+        (statusRank[drone.status] ?? 0) > (statusRank[current.status] ?? 0)
+      ) {
+        dronesById.set(drone.droneId, drone);
+      }
+    }
+  }
+
+  const timelineStart = Math.min(
+    ...orders.map((order) => Date.parse(order.requestedAt)),
+    ...issues.map((issue) => Date.parse(issue.createdAt)),
+    ...weather.map((reading) => Date.parse(reading.observedAt)),
+  );
+  const timelineEnd = Math.max(
+    ...orderedScenarios.map((item) => Date.parse(item.timelineEnd)),
+    ...orders.map((order) =>
+      Date.parse(order.deliveredAt ?? order.launchAt),
+    ),
+  );
+
+  return {
+    id: "operations-shift",
+    label: "Operations shift",
+    description: "",
+    now: new Date(timelineEnd).toISOString(),
+    timelineStart: new Date(timelineStart).toISOString(),
+    timelineEnd: new Date(timelineEnd).toISOString(),
+    generatedFrom: [...new Set(source.flatMap((item) => item.generatedFrom))],
+    summary: {
+      airborne: 0,
+      preflight: 0,
+      grounded: 0,
+      conflicts: 0,
+      openIssues: issues.length,
+      criticalIssues: issues.filter((issue) => issue.priority === "P0").length,
+    },
+    weather,
+    drones: [...dronesById.values()],
+    orders,
+    issues,
+  };
+}
+
+const unifiedScenario = createUnifiedScenario(scenarios);
+const replayEvents = [
+  Date.parse(unifiedScenario.timelineStart),
+  ...unifiedScenario.orders.flatMap((order) => [
+    Date.parse(order.requestedAt),
+    Date.parse(order.launchAt),
+    ...(order.readinessEventAt ? [Date.parse(order.readinessEventAt)] : []),
+    ...(order.deliveredAt ? [Date.parse(order.deliveredAt)] : []),
+  ]),
+  ...unifiedScenario.issues.map((issue) => Date.parse(issue.createdAt)),
+  ...unifiedScenario.weather.map((reading) => Date.parse(reading.observedAt)),
+  Date.parse(unifiedScenario.timelineEnd),
+]
+  .filter(Number.isFinite)
+  .sort((a, b) => a - b)
+  .filter((value, index, values) => index === 0 || value !== values[index - 1]);
 
 function PriorityChip({ priority }: { priority: Issue["priority"] }) {
   return <span className={`priority-chip priority-${priority.toLowerCase()}`}>{priority}</span>;
@@ -372,8 +447,7 @@ function Metric({
 
 export function OperationsDashboard() {
   const [view, setView] = useState<View>("fleet");
-  const [scenarioIndex, setScenarioIndex] = useState(0);
-  const [replayTime, setReplayTime] = useState(() => Date.parse(scenarios[0].timelineStart));
+  const [replayIndex, setReplayIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
   const [replaySpeed, setReplaySpeed] = useState(DEFAULT_REPLAY_SPEED);
   const [fleetQuery, setFleetQuery] = useState("");
@@ -391,18 +465,22 @@ export function OperationsDashboard() {
   const [messagesByIssue, setMessagesByIssue] = useState<Record<string, ChatMessage[]>>({});
   const [workflowBusy, setWorkflowBusy] = useState<Record<string, boolean>>({});
   const recommendationRequests = useRef(new Set<string>());
-  const previousReplayTime = useRef(Date.parse(scenarios[0].timelineStart));
+  const previousReplayTime = useRef(Date.parse(unifiedScenario.timelineStart));
   const notifiedIssueIds = useRef(
     new Set(
-      scenarios[0].issues
-        .filter((issue) => Date.parse(issue.createdAt) <= Date.parse(scenarios[0].timelineStart))
+      unifiedScenario.issues
+        .filter(
+          (issue) =>
+            Date.parse(issue.createdAt) <=
+            Date.parse(unifiedScenario.timelineStart),
+        )
         .map((issue) => issue.id),
     ),
   );
 
-  const scenario = scenarios[scenarioIndex];
+  const scenario = unifiedScenario;
   const timelineStart = Date.parse(scenario.timelineStart);
-  const timelineEnd = Date.parse(scenario.timelineEnd);
+  const replayTime = replayEvents[replayIndex] ?? timelineStart;
 
   const activeIssues = useMemo(
     () => scenario.issues.filter((issue) => Date.parse(issue.createdAt) <= replayTime),
@@ -427,7 +505,12 @@ export function OperationsDashboard() {
           .filter((order) => order.status === "preflight" && order.minutesToLaunch <= 30)
           .sort((a, b) => Date.parse(a.launchAt) - Date.parse(b.launchAt));
         const chosen = active[0] ?? upcoming[0] ?? null;
-        const safetyLocked = ["grounded", "maintenance", "review"].includes(drone.status);
+        const hasSafetyIssue = activeIssues.some(
+          (issue) => issue.entity === drone.droneId,
+        );
+        const safetyLocked =
+          hasSafetyIssue &&
+          ["grounded", "maintenance", "review"].includes(drone.status);
         const hasConflict = active.length > 1 || upcoming.length > 1;
 
         let status = drone.status;
@@ -469,7 +552,7 @@ export function OperationsDashboard() {
           assignmentConflict: drone.assignmentConflict || hasConflict,
         };
       }),
-    [projectedOrders, replayTime, scenario],
+    [activeIssues, projectedOrders, replayTime, scenario],
   );
 
   const selectedDrone =
@@ -483,7 +566,7 @@ export function OperationsDashboard() {
   const toastIssue =
     scenario.issues.find((issue) => issue.id === toastIssueId) ?? null;
   const replayProgress =
-    ((replayTime - timelineStart) / Math.max(1, timelineEnd - timelineStart)) * 100;
+    (replayIndex / Math.max(1, replayEvents.length - 1)) * 100;
 
   useEffect(() => {
     if (
@@ -497,19 +580,19 @@ export function OperationsDashboard() {
   }, [activeIssues, selectedIssueId]);
 
   useEffect(() => {
-    if (!isPlaying || replayTime >= timelineEnd) return;
+    if (!isPlaying || replayIndex >= replayEvents.length - 1) return;
     const interval = window.setInterval(() => {
-      setReplayTime((current) => {
+      setReplayIndex((current) => {
         const next = Math.min(
-          timelineEnd,
-          current + replaySpeed * 60_000 * (REPLAY_TICK_MS / 1000),
+          replayEvents.length - 1,
+          current + replaySpeed,
         );
-        if (next >= timelineEnd) setIsPlaying(false);
+        if (next >= replayEvents.length - 1) setIsPlaying(false);
         return next;
       });
     }, REPLAY_TICK_MS);
     return () => window.clearInterval(interval);
-  }, [isPlaying, replaySpeed, timelineEnd]);
+  }, [isPlaying, replayIndex, replaySpeed]);
 
   useEffect(() => {
     const previous = previousReplayTime.current;
@@ -635,30 +718,8 @@ export function OperationsDashboard() {
     });
   }, [orderFilter, orderQuery, projectedOrders]);
 
-  function switchScenario(nextIndex: number) {
-    const nextScenario = scenarios[nextIndex];
-    const start = Date.parse(nextScenario.timelineStart);
-    setScenarioIndex(nextIndex);
-    setReplayTime(start);
-    previousReplayTime.current = start;
-    notifiedIssueIds.current = new Set(
-      nextScenario.issues
-        .filter((issue) => Date.parse(issue.createdAt) <= start)
-        .map((issue) => issue.id),
-    );
-    setIssueQueue([]);
-    setToastIssueId(null);
-    setIsPlaying(true);
-    setSelectedDroneId(null);
-    setSelectedOrderId(null);
-    setSelectedIssueId(
-      nextScenario.issues.find((issue) => Date.parse(issue.createdAt) <= start)?.id ??
-        null,
-    );
-  }
-
   function restartReplay() {
-    setReplayTime(timelineStart);
+    setReplayIndex(0);
     previousReplayTime.current = timelineStart;
     notifiedIssueIds.current = new Set(
       scenario.issues
@@ -674,8 +735,9 @@ export function OperationsDashboard() {
     setIsPlaying(true);
   }
 
-  function seekReplay(nextTime: number) {
-    setReplayTime(nextTime);
+  function seekReplay(nextIndex: number) {
+    const nextTime = replayEvents[nextIndex] ?? timelineStart;
+    setReplayIndex(nextIndex);
     previousReplayTime.current = nextTime;
     notifiedIssueIds.current = new Set(
       scenario.issues
@@ -687,7 +749,7 @@ export function OperationsDashboard() {
   }
 
   function toggleReplay() {
-    if (replayTime >= timelineEnd) {
+    if (replayIndex >= replayEvents.length - 1) {
       restartReplay();
       return;
     }
@@ -874,43 +936,11 @@ export function OperationsDashboard() {
           </button>
         </nav>
 
-        <div className="sidebar-divider" />
-        <div className="future-mode">
-          <History size={18} />
-          <div>
-            <span>History + analysis</span>
-            <small>Next product area</small>
-          </div>
-        </div>
-
-        <div className="sidebar-note">
-          <Database size={17} />
-          <p>
-            Synthetic data replay
-            <span>11 datasets + policy evidence</span>
-          </p>
-        </div>
       </aside>
 
       <main className="main-area">
         <header className="topbar">
-          <div className="replay-selector">
-            <label htmlFor="scenario">Replay scenario</label>
-            <div className="select-wrap">
-              <select
-                id="scenario"
-                value={scenarioIndex}
-                onChange={(event) => switchScenario(Number(event.target.value))}
-              >
-                {scenarios.map((option, index) => (
-                  <option key={option.id} value={index}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown size={15} />
-            </div>
-          </div>
+          <strong className="replay-title">Replay</strong>
 
           <div className="replay-clock">
             <Clock3 size={16} />
@@ -928,7 +958,7 @@ export function OperationsDashboard() {
             )}
             {isPlaying
               ? "Pause"
-              : replayTime >= timelineEnd
+              : replayIndex >= replayEvents.length - 1
                 ? "Replay again"
                 : "Resume"}
           </button>
@@ -955,47 +985,31 @@ export function OperationsDashboard() {
           <div className="timeline-scrubber">
             <input
               type="range"
-              min={timelineStart}
-              max={timelineEnd}
-              step={60_000}
-              value={replayTime}
+              min={0}
+              max={replayEvents.length - 1}
+              step={1}
+              value={replayIndex}
               onChange={(event) => seekReplay(Number(event.target.value))}
               aria-label="Replay position"
               style={{ "--replay-progress": `${replayProgress}%` } as React.CSSProperties}
             />
             <div>
-              <span>{formatTime(scenario.timelineStart)}</span>
-              <strong>{Math.round(replayProgress)}%</strong>
-              <span>{formatTime(scenario.timelineEnd)}</span>
+              <span>{formatTime(scenario.timelineStart, true)}</span>
+              <span>{formatTime(scenario.timelineEnd, true)}</span>
             </div>
           </div>
           <label className="speed-control">
-            <span>Replay speed</span>
+            <span>Speed</span>
             <select
               value={replaySpeed}
               onChange={(event) => setReplaySpeed(Number(event.target.value))}
             >
-              <option value={1}>1 min/sec</option>
-              <option value={5}>5 min/sec</option>
-              <option value={15}>15 min/sec</option>
+              <option value={1}>1×</option>
+              <option value={3}>3×</option>
+              <option value={10}>10×</option>
             </select>
             <ChevronDown size={14} />
           </label>
-        </section>
-
-        <section className="scenario-banner">
-          <div>
-            <span className="eyebrow">LIVE DATA REPLAY</span>
-            <strong>{scenario.label}</strong>
-            <p>{scenario.description}</p>
-          </div>
-          <div className="policy-banner">
-            <ShieldAlert size={18} />
-            <span>
-              Human decision required
-              <small>The dashboard never authorizes flight.</small>
-            </span>
-          </div>
         </section>
 
         {view === "fleet" && (
@@ -1040,7 +1054,7 @@ export function OperationsDashboard() {
               onSendMessage={sendIssueMessage}
             />
           ) : (
-            <EmptyIssues replayTime={replayTime} />
+            <EmptyIssues />
           ))}
       </main>
 
@@ -1095,6 +1109,21 @@ function FleetView({
   const conflicts = allDrones.filter(
     (drone) => drone.status === "conflict" || drone.assignmentConflict,
   ).length;
+  const currentWeather = [
+    ...scenario.weather
+      .filter((reading) => Date.parse(reading.observedAt) <= replayTime)
+      .reduce((latest, reading) => {
+        const current = latest.get(reading.site);
+        if (
+          !current ||
+          Date.parse(reading.observedAt) > Date.parse(current.observedAt)
+        ) {
+          latest.set(reading.site, reading);
+        }
+        return latest;
+      }, new Map<string, Weather>())
+      .values(),
+  ];
 
   return (
     <div className="page-content">
@@ -1115,35 +1144,34 @@ function FleetView({
         <Metric label="Assignment conflicts" value={conflicts} />
       </div>
 
-      <div className="weather-strip">
-        {scenario.weather.map((weather) => {
-          const observed = Date.parse(weather.observedAt) <= replayTime;
-          return (
+      {currentWeather.length > 0 && (
+        <div className="weather-strip">
+          {currentWeather.map((weather) => (
             <div
-              className={`weather-card weather-${observed ? weather.policyState : "awaiting"}`}
-              key={weather.site}
+              className={`weather-card weather-${weather.policyState}`}
+              key={`${weather.site}-${weather.observedAt}`}
             >
               <div className="weather-title">
                 <CloudSun size={18} />
                 <strong>{weather.siteLabel}</strong>
-                <span>{observed ? weather.policyState : "awaiting"}</span>
+                <span>{weather.policyState}</span>
               </div>
               <div className="weather-values">
                 <span>
                   <Wind size={14} />
-                  {observed ? weather.wind : "—"} <small>kph</small>
+                  {weather.wind} <small>kph</small>
                 </span>
                 <span>
-                  Gust {observed ? weather.gust : "—"} <small>kph</small>
+                  Gust {weather.gust} <small>kph</small>
                 </span>
                 <span>
-                  Vis {observed ? weather.visibility : "—"} <small>km</small>
+                  Vis {weather.visibility} <small>km</small>
                 </span>
               </div>
             </div>
-          );
-        })}
-      </div>
+          ))}
+        </div>
+      )}
 
       <div className="panel table-panel">
         <div className="panel-toolbar">
@@ -1389,22 +1417,15 @@ function OrdersView({
   );
 }
 
-function EmptyIssues({ replayTime }: { replayTime: number }) {
+function EmptyIssues() {
   return (
     <div className="page-content issues-page">
       <div className="page-heading">
-        <div>
-          <h1>Urgent issues</h1>
-        </div>
-        <div className="heading-status">
-          <Clock3 size={16} />
-          {formatTime(new Date(replayTime).toISOString())}
-        </div>
+        <h1>Issues</h1>
       </div>
       <div className="panel empty-issues">
         <ShieldAlert size={22} />
-        <strong>No active issues at this replay time</strong>
-        <span>New issues will appear here when their event time is reached.</span>
+        <strong>No issues</strong>
       </div>
     </div>
   );
@@ -1460,15 +1481,11 @@ function IssuesView({
       issue.launchBlocking &&
       (tickets[issue.id]?.status ?? "new") !== "resolved",
   ).length;
-  const columns: Array<{
-    status: TicketStatus;
-    label: string;
-    description: string;
-  }> = [
-    { status: "new", label: "New", description: "AI triaged" },
-    { status: "in_progress", label: "In progress", description: "Operator owned" },
-    { status: "waiting", label: "Waiting on team", description: "Handoff sent" },
-    { status: "resolved", label: "Resolved", description: "Human closed" },
+  const columns: Array<{ status: TicketStatus; label: string }> = [
+    { status: "new", label: "New" },
+    { status: "in_progress", label: "In progress" },
+    { status: "waiting", label: "Waiting" },
+    { status: "resolved", label: "Resolved" },
   ];
 
   async function sendDraft() {
@@ -1486,12 +1503,7 @@ function IssuesView({
     <div className="page-content issues-page">
       <div className="page-heading">
         <div>
-          <span className="eyebrow">AI-ASSISTED ISSUE OPERATIONS</span>
-          <h1>Issue command board</h1>
-          <p>
-            Every issue is triaged on arrival, coordinated in one thread, and kept
-            open until an operator records the resolution.
-          </p>
+          <h1>Issues</h1>
         </div>
         <div className="issue-heading-metrics">
           <span><strong>{openCount}</strong> open</span>
@@ -1504,17 +1516,6 @@ function IssuesView({
 
       <div className="issue-workspace">
         <section className="kanban-shell" aria-label="Issue workflow board">
-          <div className="kanban-toolbar">
-            <div>
-              <Columns3 size={17} />
-              <strong>Live workflow</strong>
-              <span>Drag tickets or use the status controls</span>
-            </div>
-            <span className="auto-triage-chip">
-              <Bot size={14} />
-              Auto-triage on
-            </span>
-          </div>
           <div className="kanban-board">
             {columns.map((column) => {
               const columnIssues = issues.filter(
@@ -1536,7 +1537,6 @@ function IssuesView({
                     <span className="column-dot" />
                     <div>
                       <strong>{column.label}</strong>
-                      <small>{column.description}</small>
                     </div>
                     <b>{columnIssues.length}</b>
                   </div>
@@ -1565,7 +1565,6 @@ function IssuesView({
                             )}
                           </span>
                           <strong>{issue.title}</strong>
-                          <p>{issue.summary}</p>
                           <span className="kanban-ai-preview">
                             <Bot size={13} />
                             {displayService(
@@ -1635,26 +1634,17 @@ function IssuesView({
                 <Bot size={18} />
               </span>
               <div>
-                <strong>Recommended on arrival</strong>
-                <small>
-                  {loading
-                    ? "Policy action ready · OpenAI is refining the handoff"
-                    : activeRecommendation.source === "openai"
-                      ? "OpenAI validated against evidence and allowed actions"
-                      : "Policy-grounded action · OpenAI key not connected"}
-                </small>
+                <strong>Recommendation</strong>
+                {loading && <small>Updating…</small>}
               </div>
             </div>
             <div className="recommended-action recommended-action-primary">
-              <span>Next best action</span>
               <strong>{displayService(activeRecommendation.actionId)}</strong>
             </div>
             <div className="recommendation-meta">
-              <span>{activeRecommendation.evidenceIds.length} evidence points</span>
-              <span>{activeRecommendation.policyRuleIds.length} policy rules</span>
               <button onClick={onRefresh} disabled={loading}>
                 <RefreshCw className={loading ? "spin" : ""} size={13} />
-                Re-check
+                Refresh
               </button>
             </div>
           </div>
@@ -1670,24 +1660,11 @@ function IssuesView({
                   )}
                 </span>
                 <div>
-                  <strong>Prepared handoff</strong>
-                  <small>
-                    To {activeRecommendation.coordination.contactName} ·{" "}
-                    {activeRecommendation.coordination.contactRole}
-                  </small>
+                  <strong>Message</strong>
+                  <small>{activeRecommendation.coordination.contactName}</small>
                 </div>
-                <span className="draft-ready">Ready</span>
               </div>
-              <label className="message-subject">
-                <span>SUBJECT</span>
-                <input
-                  value={activeRecommendation.coordination.subject}
-                  readOnly
-                  aria-label="Prepared message subject"
-                />
-              </label>
               <label className="message-composer">
-                <span>MESSAGE</span>
                 <textarea
                   value={draft}
                   onChange={(event) =>
@@ -1696,15 +1673,11 @@ function IssuesView({
                       [selectedIssue.id]: event.target.value,
                     }))
                   }
-                  rows={6}
-                  aria-label="Prepared coordination message"
+                  rows={4}
+                  aria-label="Coordination message"
                 />
               </label>
               <div className="composer-footer">
-                <span>
-                  <Bot size={13} />
-                  Prepared from this ticket only
-                </span>
                 <button
                   onClick={() => void sendDraft()}
                   disabled={
@@ -1712,7 +1685,7 @@ function IssuesView({
                   }
                 >
                   <Send size={14} />
-                  Send to {activeRecommendation.coordination.channel}
+                  Send
                 </button>
               </div>
             </section>
@@ -1746,31 +1719,17 @@ function IssuesView({
               {!selectedMessages.length && (
                 <div className="thread-empty">
                   <MessageSquare size={18} />
-                  <span>
-                    No messages yet. The prepared handoff above starts the thread
-                    in one click.
-                  </span>
+                  <span>No messages</span>
                 </div>
               )}
             </div>
           </section>
 
-          <div className="human-gate">
-            <ShieldAlert size={19} />
-            <div>
-              <strong>Ticket stays open until a human resolves it</strong>
-              <p>
-                AI can recommend and draft outreach, but cannot authorize, clear,
-                release, or close a flight issue.
-              </p>
-            </div>
-          </div>
-
           <details className="ticket-evidence">
             <summary>
               <span>
                 <Database size={15} />
-                Evidence and policy basis
+                Evidence
               </span>
               <span>{selectedIssue.evidence.length} sources</span>
             </summary>
@@ -1913,7 +1872,6 @@ function OrderDrawer({ order, onClose }: { order: Order; onClose: () => void }) 
             <ShieldAlert size={18} />
             <div>
               <strong>{preflightLabels[order.preflightState]}</strong>
-              <span>Human release decision is still required.</span>
             </div>
           </div>
           <div className="check-list">
