@@ -226,6 +226,12 @@ type ChatMessage = {
   createdAt: string;
 };
 
+type MessageRecipient = {
+  channel: string;
+  name: string;
+  role: string;
+};
+
 type IssueLifecycleState =
   | "condition_active"
   | "ready_for_release"
@@ -257,6 +263,39 @@ const ISSUE_MESSAGES_KEY = "zipline-issue-messages-v1";
 const RELEASE_APPROVALS_KEY = "zipline-release-approvals-v1";
 const CONFLICT_RESOLUTIONS_KEY = "zipline-conflict-resolutions-v1";
 const SIMULATION_RUN_KEY = "zipline-simulation-run-v1";
+
+const MESSAGE_RECIPIENTS: MessageRecipient[] = [
+  {
+    channel: "Ops control",
+    name: "Operations control",
+    role: "Duty operator",
+  },
+  {
+    channel: "Maintenance",
+    name: "Maintenance team",
+    role: "Aircraft maintenance",
+  },
+  {
+    channel: "Flight operations",
+    name: "Flight operations",
+    role: "Flight coordinator",
+  },
+  {
+    channel: "Merchant",
+    name: "Merchant partner",
+    role: "Merchant operations",
+  },
+  {
+    channel: "Customer support",
+    name: "Customer support",
+    role: "Delivery support",
+  },
+  {
+    channel: "Site lead",
+    name: "Site lead",
+    role: "Fulfillment-site supervisor",
+  },
+];
 
 const statusLabels: Record<string, string> = {
   in_flight: "In flight",
@@ -1606,9 +1645,11 @@ export function OperationsDashboard({
             <EmptyIssues />
           ))}
 
-        {view === "history" && (
+        <div
+          className={`history-view-host ${view === "history" ? "active" : ""}`}
+        >
           <HistoryWorkspace />
-        )}
+        </div>
       </main>
 
       {selectedDrone && (
@@ -2044,6 +2085,9 @@ function IssuesView({
   const [chatOpen, setChatOpen] = useState(false);
   const [recommendationOpen, setRecommendationOpen] = useState(false);
   const [openReference, setOpenReference] = useState<OpenReference | null>(null);
+  const [recipientByIssue, setRecipientByIssue] = useState<Record<string, string>>(
+    {},
+  );
   const activeRecommendation =
     recommendation ?? buildImmediateRecommendation(selectedIssue);
   const selectedLifecycle = lifecycles[selectedIssue.id];
@@ -2083,6 +2127,21 @@ function IssuesView({
   const draft =
     drafts[selectedIssue.id] ??
     activeRecommendation.coordination.draftMessage;
+  const recommendedRecipient: MessageRecipient = {
+    channel: activeRecommendation.coordination.channel,
+    name: activeRecommendation.coordination.contactName,
+    role: activeRecommendation.coordination.contactRole,
+  };
+  const recipientOptions = [
+    recommendedRecipient,
+    ...MESSAGE_RECIPIENTS.filter(
+      (recipient) => recipient.channel !== recommendedRecipient.channel,
+    ),
+  ];
+  const selectedRecipient =
+    recipientOptions.find(
+      (recipient) => recipient.channel === recipientByIssue[selectedIssue.id],
+    ) ?? recommendedRecipient;
   const openCount = issues.filter(
     (issue) => visibleStatus(issue) !== "resolved",
   ).length;
@@ -2105,7 +2164,7 @@ function IssuesView({
     setDrafts((current) => ({ ...current, [selectedIssue.id]: "" }));
     await onSendMessage(
       selectedIssue.id,
-      activeRecommendation.coordination.channel,
+      selectedRecipient.channel,
       body,
     );
   }
@@ -2291,7 +2350,7 @@ function IssuesView({
             className="recommendation-dialog-layer"
             role="dialog"
             aria-modal="true"
-            aria-label={`Recommendation for ${selectedIssue.title}`}
+            aria-label={`Recommended action for ${selectedIssue.title}`}
           >
             <button
               className="recommendation-dialog-backdrop"
@@ -2541,7 +2600,7 @@ function IssuesView({
                 <Bot size={18} />
               </span>
               <div>
-                <strong>Recommendation</strong>
+                <strong>Recommended action</strong>
                 <small>
                   {loading
                     ? "Updating…"
@@ -2664,18 +2723,45 @@ function IssuesView({
             <section className="coordination-card">
               <div className="coordination-header">
                 <span>
-                  {activeRecommendation.coordination.channel === "Maintenance" ? (
+                  {selectedRecipient.channel === "Maintenance" ? (
                     <Wrench size={17} />
                   ) : (
                     <UserRound size={17} />
                   )}
                 </span>
                 <div>
-                  <strong>Message</strong>
-                  <small>{activeRecommendation.coordination.contactName}</small>
+                  <strong>Message recipient</strong>
+                  <small>
+                    {selectedRecipient.name} · {selectedRecipient.role}
+                  </small>
                 </div>
+                <span className="ai-recipient-note">
+                  {selectedRecipient.channel === recommendedRecipient.channel
+                    ? "AI suggested"
+                    : "Operator selected"}
+                </span>
               </div>
+              <label className="message-recipient">
+                <span>To</span>
+                <select
+                  value={selectedRecipient.channel}
+                  onChange={(event) =>
+                    setRecipientByIssue((current) => ({
+                      ...current,
+                      [selectedIssue.id]: event.target.value,
+                    }))
+                  }
+                >
+                  {recipientOptions.map((recipient) => (
+                    <option value={recipient.channel} key={recipient.channel}>
+                      {recipient.name} — {recipient.role}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown size={13} />
+              </label>
               <label className="message-composer">
+                <span>Message</span>
                 <textarea
                   value={draft}
                   onChange={(event) =>
@@ -2696,7 +2782,7 @@ function IssuesView({
                   }
                 >
                   <Send size={14} />
-                  Send
+                  Send to {selectedRecipient.name}
                 </button>
               </div>
             </section>
@@ -2714,7 +2800,9 @@ function IssuesView({
             </div>
             <div className="issue-chat-preview">
               {selectedMessages.length
-                ? selectedMessages[selectedMessages.length - 1].body
+                ? `To ${selectedMessages[selectedMessages.length - 1].channel}: ${
+                    selectedMessages[selectedMessages.length - 1].body
+                  }`
                 : "No messages yet."}
             </div>
           </section>
@@ -2767,6 +2855,25 @@ function IssuesView({
               <div>
                 <span>{selectedIssue.id}</span>
                 <h2>{selectedIssue.title}</h2>
+                <label className="issue-chat-recipient">
+                  <span>Message to</span>
+                  <select
+                    value={selectedRecipient.channel}
+                    onChange={(event) =>
+                      setRecipientByIssue((current) => ({
+                        ...current,
+                        [selectedIssue.id]: event.target.value,
+                      }))
+                    }
+                  >
+                    {recipientOptions.map((recipient) => (
+                      <option value={recipient.channel} key={recipient.channel}>
+                        {recipient.name} — {recipient.role}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown size={13} />
+                </label>
               </div>
               <button type="button" onClick={() => setChatOpen(false)} aria-label="Close chat">
                 <X size={18} />
@@ -2781,9 +2888,11 @@ function IssuesView({
                   </span>
                   <div>
                     <span className="message-byline">
-                      <strong>{message.senderName}</strong>
+                      <strong>
+                        {message.senderName} → {message.channel}
+                      </strong>
                       <small>
-                        {message.channel} · {formatTime(message.createdAt)}
+                        {formatTime(message.createdAt)}
                       </small>
                     </span>
                     <p>{message.body}</p>
@@ -2817,7 +2926,7 @@ function IssuesView({
                 disabled={!draft.trim() || Boolean(workflowBusy[selectedIssue.id])}
               >
                 <Send size={15} />
-                Send
+                Send to {selectedRecipient.name}
               </button>
             </footer>
           </section>

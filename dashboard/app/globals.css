@@ -2527,7 +2527,7 @@ tbody tr:last-child td {
 
 .coordination-header {
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 9px;
   padding: 12px;
@@ -2560,6 +2560,18 @@ tbody tr:last-child td {
   font-size: 11px;
 }
 
+.coordination-header .ai-recipient-note {
+  width: auto;
+  height: auto;
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: #eeece5;
+  color: var(--mid-gray);
+  font-size: 9px;
+  font-weight: 760;
+  white-space: nowrap;
+}
+
 .draft-ready {
   padding: 4px 6px;
   border-radius: 999px;
@@ -2571,6 +2583,7 @@ tbody tr:last-child td {
 }
 
 .message-subject,
+.message-recipient,
 .message-composer {
   display: flex;
   padding: 10px 12px 0;
@@ -2579,11 +2592,44 @@ tbody tr:last-child td {
 }
 
 .message-subject > span,
+.message-recipient > span,
 .message-composer > span {
   color: var(--mid-gray);
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.8px;
+}
+
+.message-recipient {
+  position: relative;
+}
+
+.message-recipient select {
+  width: 100%;
+  height: 36px;
+  appearance: none;
+  padding: 0 34px 0 9px;
+  border: 1px solid #ddd9d0;
+  border-radius: 8px;
+  outline: 0;
+  background: #fbfaf7;
+  color: var(--deep-gray);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 680;
+}
+
+.message-recipient select:focus {
+  border-color: var(--violet);
+}
+
+.message-recipient > svg {
+  position: absolute;
+  right: 22px;
+  bottom: 11px;
+  color: var(--mid-gray);
+  pointer-events: none;
 }
 
 .message-subject input,
@@ -3482,6 +3528,49 @@ tbody tr:last-child td {
   font-size: 18px;
 }
 
+.issue-chat-recipient {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.issue-chat-window > header .issue-chat-recipient > span {
+  flex: 0 0 auto;
+  color: var(--mid-gray);
+  font-size: 10px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.issue-chat-recipient select {
+  height: 30px;
+  min-width: 260px;
+  appearance: none;
+  padding: 0 30px 0 9px;
+  border: 1px solid #ddd9d0;
+  border-radius: 7px;
+  outline: 0;
+  background: #fbfaf7;
+  color: var(--deep-gray);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 680;
+}
+
+.issue-chat-recipient select:focus {
+  border-color: var(--violet);
+}
+
+.issue-chat-recipient > svg {
+  position: absolute;
+  right: 8px;
+  color: var(--mid-gray);
+  pointer-events: none;
+}
+
 .issue-chat-window > header button {
   display: grid;
   width: 30px;
@@ -3556,6 +3645,14 @@ tbody tr:last-child td {
 
 .history-page {
   padding-top: 30px;
+}
+
+.history-view-host {
+  display: none;
+}
+
+.history-view-host.active {
+  display: block;
 }
 
 .history-heading {
