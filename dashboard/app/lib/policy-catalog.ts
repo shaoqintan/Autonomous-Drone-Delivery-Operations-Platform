@@ -9,6 +9,70 @@ export type PolicyReference = {
   note?: string;
 };
 
+export type PolicyDocumentSection = {
+  title: string;
+  paragraphs: Array<{
+    policyId: string;
+    text: string;
+  }>;
+};
+
+export const POLICY_DOCUMENT = {
+  title: "Fictional Commercial Delivery Policy",
+  source: "OPERATING_POLICY.md",
+  notice:
+    "This is authoritative only for this interview-practice scenario, not real operational guidance.",
+  sections: [
+    {
+      title: "Weather and release",
+      paragraphs: [
+        {
+          policyId: "POL-WEATHER-HOLD",
+          text: "Hold launch when sustained wind exceeds 35 kph, gusts exceed 42 kph, or visibility is under 3 km.",
+        },
+        {
+          policyId: "POL-WEATHER-REVIEW",
+          text: "An operator review is required at 26–35 kph sustained wind, 34–42 kph gusts, or 3–7 km visibility.",
+        },
+      ],
+    },
+    {
+      title: "Customer and merchant handling",
+      paragraphs: [
+        {
+          policyId: "POL-VERIFIED-COMPLETION",
+          text: "A delivery is successful only after verified completion. A returned or inaccessible drop zone is an exception, not a completion.",
+        },
+        {
+          policyId: "POL-MERCHANT-READY",
+          text: "Use actual merchant-ready status, not order acceptance, when estimating a customer promise.",
+        },
+        {
+          policyId: "POL-HUMAN-DECISION",
+          text: "For a weather hold or operational exception, the copilot may recommend deferral, cancellation, reassignment, or customer outreach; a human operator owns the decision.",
+        },
+      ],
+    },
+    {
+      title: "Fleet escalation",
+      paragraphs: [
+        {
+          policyId: "POL-FLEET-GROUND",
+          text: "Ground for battery capacity below 80%, cell-voltage spread over 60 mV, or motor vibration over 3.0 mm/s.",
+        },
+        {
+          policyId: "POL-FLEET-RESTRICT",
+          text: "Restrict and open a maintenance review for battery capacity 80–84%, spread 45–60 mV, or vibration 2.2–3.0 mm/s.",
+        },
+        {
+          policyId: "POL-NO-AUTHORIZATION",
+          text: "The copilot may summarize evidence and policies. It must never state that a flight is authorized or safe to launch.",
+        },
+      ],
+    },
+  ] satisfies PolicyDocumentSection[],
+};
+
 const AUTHORED_POLICIES: Record<
   string,
   Omit<PolicyReference, "requestedId" | "policyId" | "authoritative">

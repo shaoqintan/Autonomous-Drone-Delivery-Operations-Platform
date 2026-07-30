@@ -2,7 +2,6 @@
 
 import {
   AlertTriangle,
-  Archive,
   ArrowRight,
   Bell,
   Bot,
@@ -13,11 +12,15 @@ import {
   Clock3,
   CloudSun,
   Database,
+  ExternalLink,
+  FileText,
   Gauge,
   History,
   ListFilter,
   MapPin,
+  Maximize2,
   MessageSquare,
+  Minimize2,
   PackageCheck,
   Pause,
   PanelLeftClose,
@@ -28,6 +31,7 @@ import {
   Search,
   Send,
   ShieldAlert,
+  Table2,
   UserRound,
   Wind,
   Wrench,
@@ -41,6 +45,7 @@ import {
 } from "./lib/simulation";
 import {
   getPolicyReference,
+  POLICY_DOCUMENT,
   type PolicyReference,
 } from "./lib/policy-catalog";
 
@@ -2083,8 +2088,10 @@ function IssuesView({
   const [draggedIssueId, setDraggedIssueId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [chatOpen, setChatOpen] = useState(false);
+  const [chatExpanded, setChatExpanded] = useState(false);
   const [recommendationOpen, setRecommendationOpen] = useState(false);
   const [openReference, setOpenReference] = useState<OpenReference | null>(null);
+  const referenceTargetRef = useRef<HTMLElement | null>(null);
   const [recipientByIssue, setRecipientByIssue] = useState<Record<string, string>>(
     {},
   );
@@ -2123,6 +2130,20 @@ function IssuesView({
   ];
   const evidenceById = new Map(
     availableEvidence.map((item) => [item.id, item]),
+  );
+  const allEvidence = [
+    ...issues.flatMap((issue) => [
+      ...issue.evidence,
+      ...issue.recoveryEvidence,
+    ]),
+    ...(activeRecommendation.evidence ?? []),
+  ].filter(
+    (item, index, source) =>
+      source.findIndex((candidate) => candidate.id === item.id) === index,
+  );
+  const totalMessageCount = Object.values(messages).reduce(
+    (total, thread) => total + thread.length,
+    0,
   );
   const draft =
     drafts[selectedIssue.id] ??
@@ -2174,6 +2195,27 @@ function IssuesView({
     setRecommendationOpen(true);
   }
 
+  function openIssueChat(issueId = selectedIssue.id) {
+    onSelect(issueId);
+    setChatOpen(true);
+  }
+
+  function closeIssueChat() {
+    setChatOpen(false);
+    setChatExpanded(false);
+  }
+
+  useEffect(() => {
+    if (!openReference) return;
+    const frame = window.requestAnimationFrame(() => {
+      referenceTargetRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [openReference]);
+
   return (
     <div className="page-content issues-page">
       <div className="page-heading">
@@ -2190,84 +2232,6 @@ function IssuesView({
       </div>
 
       <div className="issue-workspace">
-        <aside className="panel issue-conversation-panel" aria-label="Issue conversations">
-          <div className="issue-conversation-title">
-            <MessageSquare size={15} />
-            <strong>Issue chats</strong>
-          </div>
-
-          <div className="issue-conversation-section">
-            <div className="issue-conversation-section-title">
-              <span>Active</span>
-              <span>
-                {
-                  issues.filter(
-                    (issue) => visibleStatus(issue) !== "resolved",
-                  ).length
-                }
-              </span>
-            </div>
-            <div className="issue-conversation-list">
-              {issues
-                .filter(
-                  (issue) => visibleStatus(issue) !== "resolved",
-                )
-                .map((issue) => (
-                  <button
-                    className={issue.id === selectedIssue.id ? "selected" : ""}
-                    key={issue.id}
-                    onClick={() => {
-                      onSelect(issue.id);
-                      setChatOpen(true);
-                    }}
-                  >
-                    <span className={`priority-dot priority-${issue.priority.toLowerCase()}`} />
-                    <span>
-                      <strong>{issue.title}</strong>
-                      <small>
-                        {messages[issue.id]?.length ?? 0} messages ·{" "}
-                        {displayService(visibleStatus(issue))}
-                      </small>
-                    </span>
-                  </button>
-                ))}
-            </div>
-          </div>
-
-          <div className="issue-conversation-section issue-conversation-archived">
-            <div className="issue-conversation-section-title">
-              <span>Archived</span>
-              <span>
-                {
-                  issues.filter(
-                    (issue) => visibleStatus(issue) === "resolved",
-                  ).length
-                }
-              </span>
-            </div>
-            <div className="issue-conversation-list">
-              {issues
-                .filter((issue) => visibleStatus(issue) === "resolved")
-                .map((issue) => (
-                  <button
-                    className={issue.id === selectedIssue.id ? "selected" : ""}
-                    key={issue.id}
-                    onClick={() => {
-                      onSelect(issue.id);
-                      setChatOpen(true);
-                    }}
-                  >
-                    <Archive size={13} />
-                    <span>
-                      <strong>{issue.title}</strong>
-                      <small>{messages[issue.id]?.length ?? 0} messages</small>
-                    </span>
-                  </button>
-                ))}
-            </div>
-          </div>
-        </aside>
-
         <section className="kanban-shell" aria-label="Issue workflow board">
           <div className="kanban-board">
             {columns.map((column) => {
@@ -2788,25 +2752,6 @@ function IssuesView({
             </section>
           )}
 
-          <section className="issue-thread">
-            <div className="thread-heading">
-              <div>
-                <MessageSquare size={16} />
-                <strong>Issue chat</strong>
-              </div>
-              <button type="button" onClick={() => setChatOpen(true)}>
-                Open chat · {selectedMessages.length}
-              </button>
-            </div>
-            <div className="issue-chat-preview">
-              {selectedMessages.length
-                ? `To ${selectedMessages[selectedMessages.length - 1].channel}: ${
-                    selectedMessages[selectedMessages.length - 1].body
-                  }`
-                : "No messages yet."}
-            </div>
-          </section>
-
           <details className="ticket-evidence">
             <summary>
               <span>
@@ -2823,7 +2768,14 @@ function IssuesView({
               </div>
               <div className="evidence-list">
                 {selectedIssue.evidence.map((item) => (
-                  <div className="evidence-item" key={item.id}>
+                  <button
+                    className="evidence-item"
+                    type="button"
+                    key={item.id}
+                    onClick={() =>
+                      setOpenReference({ kind: "evidence", value: item })
+                    }
+                  >
                     <Database size={16} />
                     <div>
                       <strong>{item.label}</strong>
@@ -2832,7 +2784,8 @@ function IssuesView({
                         {item.dataset} · {formatTime(item.timestamp, true)}
                       </span>
                     </div>
-                  </div>
+                    <ExternalLink size={14} />
+                  </button>
                 ))}
               </div>
             </div>
@@ -2842,19 +2795,52 @@ function IssuesView({
         )}
       </div>
 
+      {!chatOpen && (
+        <button
+          className="issue-chat-fab"
+          type="button"
+          onClick={() => openIssueChat()}
+          aria-label={`Open issue chat${totalMessageCount ? `, ${totalMessageCount} messages` : ""}`}
+        >
+          <MessageSquare size={19} />
+          <span>Chat</span>
+          {totalMessageCount > 0 && <b>{totalMessageCount}</b>}
+        </button>
+      )}
+
       {chatOpen && (
-        <div className="issue-chat-layer" role="dialog" aria-modal="true">
-          <button
-            className="issue-chat-backdrop"
-            type="button"
-            onClick={() => setChatOpen(false)}
-            aria-label="Close issue chat"
-          />
-          <section className="issue-chat-window">
+        <div
+          className={`issue-chat-layer ${chatExpanded ? "expanded" : ""}`}
+          role="dialog"
+          aria-modal={chatExpanded}
+          aria-label={`Chat for ${selectedIssue.title}`}
+        >
+          {chatExpanded && (
+            <button
+              className="issue-chat-backdrop"
+              type="button"
+              onClick={closeIssueChat}
+              aria-label="Close issue chat"
+            />
+          )}
+          <section className={`issue-chat-window ${chatExpanded ? "expanded" : ""}`}>
             <header>
               <div>
-                <span>{selectedIssue.id}</span>
-                <h2>{selectedIssue.title}</h2>
+                <span>ISSUE CHAT</span>
+                <label className="issue-chat-selector">
+                  <span>Conversation</span>
+                  <select
+                    value={selectedIssue.id}
+                    onChange={(event) => onSelect(event.target.value)}
+                  >
+                    {issues.map((issue) => (
+                      <option value={issue.id} key={issue.id}>
+                        {issue.priority} · {issue.title}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown size={13} />
+                </label>
                 <label className="issue-chat-recipient">
                   <span>Message to</span>
                   <select
@@ -2875,9 +2861,19 @@ function IssuesView({
                   <ChevronDown size={13} />
                 </label>
               </div>
-              <button type="button" onClick={() => setChatOpen(false)} aria-label="Close chat">
-                <X size={18} />
-              </button>
+              <div className="issue-chat-window-actions">
+                <button
+                  type="button"
+                  onClick={() => setChatExpanded((current) => !current)}
+                  aria-label={chatExpanded ? "Restore chat window" : "Expand chat window"}
+                  title={chatExpanded ? "Restore window" : "Expand"}
+                >
+                  {chatExpanded ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
+                </button>
+                <button type="button" onClick={closeIssueChat} aria-label="Close chat">
+                  <X size={18} />
+                </button>
+              </div>
             </header>
 
             <div className="issue-chat-window-messages">
@@ -2941,11 +2937,16 @@ function IssuesView({
             onClick={() => setOpenReference(null)}
             aria-label="Close reference"
           />
-          <article className="reference-modal">
+          <article className="reference-modal source-viewer">
             <header>
               <div>
                 <span>
-                  {openReference.kind === "policy" ? "POLICY" : "EVIDENCE"}
+                  {openReference.kind === "policy" ? (
+                    <FileText size={14} />
+                  ) : (
+                    <Table2 size={14} />
+                  )}
+                  {openReference.kind === "policy" ? "POLICY SOURCE" : "EVIDENCE SOURCE"}
                 </span>
                 <h2>
                   {openReference.kind === "policy"
@@ -2963,49 +2964,190 @@ function IssuesView({
             </header>
 
             {openReference.kind === "policy" ? (
-              <div className="reference-modal-body">
-                <dl>
-                  <div>
-                    <dt>Policy ID</dt>
-                    <dd>{openReference.value.policyId}</dd>
-                  </div>
-                  <div>
-                    <dt>Triggered reference</dt>
-                    <dd>{openReference.value.requestedId}</dd>
-                  </div>
-                  <div>
-                    <dt>Section</dt>
-                    <dd>{openReference.value.section}</dd>
-                  </div>
-                  <div>
-                    <dt>Source</dt>
-                    <dd>{openReference.value.source}</dd>
-                  </div>
-                </dl>
-                <p>{openReference.value.text}</p>
-                {openReference.value.note && (
-                  <aside>{openReference.value.note}</aside>
-                )}
+              <div className="source-viewer-layout">
+                <aside className="source-viewer-sidebar">
+                  <span className="source-breadcrumb">
+                    {openReference.value.source} / {openReference.value.section}
+                  </span>
+                  <dl>
+                    <div>
+                      <dt>Policy ID</dt>
+                      <dd>{openReference.value.policyId}</dd>
+                    </div>
+                    <div>
+                      <dt>Triggered as</dt>
+                      <dd>{openReference.value.requestedId}</dd>
+                    </div>
+                    <div>
+                      <dt>Authority</dt>
+                      <dd>
+                        {openReference.value.authoritative
+                          ? "Authored policy"
+                          : "Internal control"}
+                      </dd>
+                    </div>
+                  </dl>
+                  {openReference.value.note && (
+                    <aside>{openReference.value.note}</aside>
+                  )}
+                </aside>
+                <div className="source-document">
+                  {openReference.value.authoritative ? (
+                    <>
+                      <div className="source-document-heading">
+                        <small>{POLICY_DOCUMENT.source}</small>
+                        <h3>{POLICY_DOCUMENT.title}</h3>
+                        <p>{POLICY_DOCUMENT.notice}</p>
+                      </div>
+                      {POLICY_DOCUMENT.sections.map((section) => (
+                        <section key={section.title}>
+                          <h4>{section.title}</h4>
+                          {section.paragraphs.map((paragraph) => {
+                            const selected =
+                              paragraph.policyId === openReference.value.policyId;
+                            return (
+                              <p
+                                className={selected ? "source-target" : ""}
+                                key={paragraph.policyId}
+                                ref={
+                                  selected
+                                    ? (node) => {
+                                        referenceTargetRef.current = node;
+                                      }
+                                    : undefined
+                                }
+                              >
+                                <span>{paragraph.policyId}</span>
+                                {paragraph.text}
+                              </p>
+                            );
+                          })}
+                        </section>
+                      ))}
+                    </>
+                  ) : (
+                    <section>
+                      <h4>{openReference.value.section}</h4>
+                      <p
+                        className="source-target"
+                        ref={(node) => {
+                          referenceTargetRef.current = node;
+                        }}
+                      >
+                        <span>{openReference.value.policyId}</span>
+                        {openReference.value.text}
+                      </p>
+                    </section>
+                  )}
+                </div>
               </div>
             ) : (
-              <div className="reference-modal-body">
-                <dl>
-                  <div>
-                    <dt>Evidence ID</dt>
-                    <dd>{openReference.value.id}</dd>
+              <div className="source-viewer-layout">
+                <aside className="source-viewer-sidebar">
+                  <span className="source-breadcrumb">
+                    {openReference.value.dataset} / {openReference.value.id}
+                  </span>
+                  <dl>
+                    <div>
+                      <dt>Record ID</dt>
+                      <dd>{openReference.value.id}</dd>
+                    </div>
+                    <div>
+                      <dt>Dataset</dt>
+                      <dd>{openReference.value.dataset}</dd>
+                    </div>
+                    <div>
+                      <dt>Observed</dt>
+                      <dd>{formatTime(openReference.value.timestamp, true)}</dd>
+                    </div>
+                  </dl>
+                  <p>
+                    Showing the selected record with nearby rows from the same
+                    source in this simulation run.
+                  </p>
+                </aside>
+                <div className="source-table-wrap">
+                  <div className="source-table-heading">
+                    <span>{openReference.value.dataset}</span>
+                    <strong>
+                      {
+                        allEvidence.filter(
+                          (item) =>
+                            item.dataset === openReference.value.dataset,
+                        ).length
+                      }{" "}
+                      records
+                    </strong>
                   </div>
-                  <div>
-                    <dt>Dataset</dt>
-                    <dd>{openReference.value.dataset}</dd>
-                  </div>
-                  <div>
-                    <dt>Timestamp</dt>
-                    <dd>{formatTime(openReference.value.timestamp, true)}</dd>
-                  </div>
-                </dl>
-                <p>{openReference.value.value}</p>
+                  <table className="source-table">
+                    <thead>
+                      <tr>
+                        <th>Time</th>
+                        <th>Record</th>
+                        <th>Field</th>
+                        <th>Value</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {allEvidence
+                        .filter(
+                          (item) =>
+                            item.dataset === openReference.value.dataset,
+                        )
+                        .sort(
+                          (a, b) =>
+                            Date.parse(a.timestamp) - Date.parse(b.timestamp),
+                        )
+                        .map((item) => {
+                          const selected = item.id === openReference.value.id;
+                          return (
+                            <tr
+                              className={selected ? "source-target" : ""}
+                              key={item.id}
+                              ref={
+                                selected
+                                  ? (node) => {
+                                      referenceTargetRef.current = node;
+                                    }
+                                  : undefined
+                              }
+                            >
+                              <td>{formatTime(item.timestamp, true)}</td>
+                              <td><code>{item.id}</code></td>
+                              <td>{item.label}</td>
+                              <td>{item.value}</td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                  {!allEvidence.some(
+                    (item) =>
+                      item.dataset === openReference.value.dataset &&
+                      item.id === openReference.value.id,
+                  ) && (
+                    <div
+                      className="source-record-fallback source-target"
+                      ref={(node) => {
+                        referenceTargetRef.current = node;
+                      }}
+                    >
+                      <code>{openReference.value.id}</code>
+                      <strong>{openReference.value.label}</strong>
+                      <span>{openReference.value.value}</span>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
+            <footer className="source-viewer-footer">
+              <span>
+                Highlighted content is the exact source used by the recommendation.
+              </span>
+              <button type="button" onClick={() => setOpenReference(null)}>
+                Back to recommendation
+              </button>
+            </footer>
           </article>
         </div>
       )}
