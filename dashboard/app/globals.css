@@ -33,7 +33,7 @@ body {
   background: var(--crema);
   color: var(--black);
   font-family: var(--font-geist-sans), Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  font-size: 14px;
+  font-size: 16px;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -71,6 +71,14 @@ textarea:focus-visible {
   border-right: 1px solid rgba(255, 255, 255, 0.13);
   background: var(--violet);
   color: var(--white);
+  transition: width 180ms ease, padding 180ms ease;
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
 }
 
 .brand-lockup {
@@ -78,6 +86,30 @@ textarea:focus-visible {
   flex-direction: column;
   gap: 2px;
   padding: 0 10px;
+}
+
+.brand-mark {
+  display: none;
+}
+
+.sidebar-toggle {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--white);
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+
+.sidebar-toggle:hover,
+.sidebar-toggle:focus-visible {
+  border-color: rgba(255, 255, 255, 0.48);
+  background: rgba(255, 255, 255, 0.16);
 }
 
 .brand-word {
@@ -89,7 +121,7 @@ textarea:focus-visible {
 
 .brand-product {
   color: rgba(255, 255, 255, 0.72);
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 650;
   letter-spacing: 1.7px;
   text-transform: uppercase;
@@ -101,7 +133,7 @@ textarea:focus-visible {
   gap: 8px;
   margin: 30px 10px 12px;
   color: rgba(255, 255, 255, 0.7);
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 750;
   letter-spacing: 1.4px;
   text-transform: uppercase;
@@ -155,7 +187,7 @@ textarea:focus-visible {
   border-radius: 999px;
   background: var(--red);
   color: var(--white);
-  font-size: 11px;
+  font-size: 14px;
   font-variant-numeric: tabular-nums;
   font-weight: 800;
   text-align: center;
@@ -187,12 +219,12 @@ textarea:focus-visible {
 }
 
 .future-mode span {
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 650;
 }
 
 .future-mode small {
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .sidebar-note {
@@ -217,19 +249,83 @@ textarea:focus-visible {
   margin: 0;
   flex-direction: column;
   gap: 3px;
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 700;
 }
 
 .sidebar-note p span {
   color: rgba(255, 255, 255, 0.55);
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 500;
 }
 
 .main-area {
   min-height: 100vh;
   margin-left: var(--sidebar-width);
+  transition: margin-left 180ms ease;
+}
+
+@media (min-width: 761px) {
+  .app-shell.sidebar-collapsed {
+    --sidebar-width: 76px;
+  }
+
+  .sidebar-collapsed .sidebar {
+    align-items: center;
+    padding: 22px 10px 18px;
+  }
+
+  .sidebar-collapsed .sidebar-header {
+    width: 100%;
+    align-items: center;
+    flex-direction: column;
+  }
+
+  .sidebar-collapsed .brand-lockup,
+  .sidebar-collapsed .product-mode,
+  .sidebar-collapsed .nav-label,
+  .sidebar-collapsed .nav-section-label {
+    display: none;
+  }
+
+  .sidebar-collapsed .brand-mark {
+    display: grid;
+    width: 38px;
+    height: 38px;
+    place-items: center;
+    border-radius: 11px;
+    background: var(--white);
+    color: var(--violet);
+    font-size: 22px;
+    font-weight: 900;
+  }
+
+  .sidebar-collapsed .primary-nav {
+    width: 100%;
+    margin-top: 24px;
+  }
+
+  .sidebar-collapsed .primary-nav button {
+    position: relative;
+    display: grid;
+    min-height: 48px;
+    padding: 0;
+    place-items: center;
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar-collapsed .primary-nav button > svg {
+    grid-area: 1 / 1;
+  }
+
+  .sidebar-collapsed .nav-badge {
+    position: absolute;
+    top: 3px;
+    right: 1px;
+    min-width: 19px;
+    padding: 2px 5px;
+    font-size: 11px;
+  }
 }
 
 .topbar {
@@ -247,7 +343,7 @@ textarea:focus-visible {
 }
 
 .replay-title {
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 800;
 }
 
@@ -259,7 +355,7 @@ textarea:focus-visible {
   color: var(--mid-gray);
   cursor: pointer;
   font: inherit;
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 750;
   letter-spacing: 0.35px;
 }
@@ -278,7 +374,7 @@ textarea:focus-visible {
 .replay-selector label,
 .replay-clock small {
   color: var(--mid-gray);
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 750;
   letter-spacing: 1px;
   text-transform: uppercase;
@@ -298,7 +394,7 @@ textarea:focus-visible {
   background: transparent;
   color: var(--black);
   cursor: pointer;
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 720;
 }
 
@@ -322,7 +418,7 @@ textarea:focus-visible {
 }
 
 .replay-clock span {
-  font-size: 12px;
+  font-size: 14px;
   font-variant-numeric: tabular-nums;
   font-weight: 720;
 }
@@ -336,7 +432,7 @@ textarea:focus-visible {
   border-radius: 9px;
   background: var(--white);
   cursor: pointer;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 680;
   transition: transform 150ms ease, border-color 150ms ease;
 }
@@ -375,7 +471,7 @@ textarea:focus-visible {
   border-radius: 999px;
   background: var(--red);
   color: var(--white);
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 850;
 }
 
@@ -455,13 +551,13 @@ textarea:focus-visible {
   display: flex;
   justify-content: space-between;
   color: var(--mid-gray);
-  font-size: 9px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 
 .timeline-scrubber strong {
   color: var(--deep-gray);
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .speed-control {
@@ -474,7 +570,7 @@ textarea:focus-visible {
 
 .speed-control span {
   color: var(--mid-gray);
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 750;
   letter-spacing: 0.9px;
   text-transform: uppercase;
@@ -487,7 +583,7 @@ textarea:focus-visible {
   background: transparent;
   color: var(--black);
   cursor: pointer;
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 720;
 }
 
@@ -518,13 +614,13 @@ textarea:focus-visible {
 }
 
 .scenario-banner strong {
-  font-size: 14px;
+  font-size: 16px;
 }
 
 .scenario-banner p {
   margin: 0;
   color: var(--mid-gray);
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .weather-awaiting {
@@ -533,7 +629,7 @@ textarea:focus-visible {
 
 .eyebrow {
   color: var(--violet);
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 820;
   letter-spacing: 1.5px;
   text-transform: uppercase;
@@ -550,13 +646,13 @@ textarea:focus-visible {
 .policy-banner > span {
   display: flex;
   flex-direction: column;
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 750;
 }
 
 .policy-banner small {
   color: var(--mid-gray);
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 500;
 }
 
@@ -584,7 +680,7 @@ textarea:focus-visible {
   max-width: 700px;
   margin: 0;
   color: var(--mid-gray);
-  font-size: 13px;
+  font-size: 15px;
 }
 
 .heading-status {
@@ -596,7 +692,7 @@ textarea:focus-visible {
   border: 1px solid #d6dd9a;
   border-radius: 999px;
   background: rgba(203, 232, 0, 0.22);
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 750;
 }
 
@@ -630,7 +726,7 @@ textarea:focus-visible {
 
 .metric-card > span {
   color: var(--mid-gray);
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 720;
   letter-spacing: 0.8px;
   text-transform: uppercase;
@@ -646,7 +742,7 @@ textarea:focus-visible {
 
 .metric-card strong small {
   margin-left: 3px;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 700;
   letter-spacing: 0;
 }
@@ -688,7 +784,7 @@ textarea:focus-visible {
 }
 
 .weather-title strong {
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .weather-title span {
@@ -696,7 +792,7 @@ textarea:focus-visible {
   padding: 3px 7px;
   border-radius: 999px;
   background: var(--bone);
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 800;
   text-transform: uppercase;
 }
@@ -707,7 +803,7 @@ textarea:focus-visible {
   gap: 16px;
   margin-top: 10px;
   color: var(--deep-gray);
-  font-size: 11px;
+  font-size: 14px;
   font-variant-numeric: tabular-nums;
   font-weight: 700;
 }
@@ -720,7 +816,7 @@ textarea:focus-visible {
 
 .weather-values small {
   color: var(--mid-gray);
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .weather-hold {
@@ -768,13 +864,13 @@ textarea:focus-visible {
 
 .panel-toolbar h2 {
   margin: 0;
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 780;
 }
 
 .panel-toolbar span {
   color: var(--mid-gray);
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .toolbar-actions {
@@ -802,7 +898,7 @@ textarea:focus-visible {
   outline: 0;
   background: transparent;
   color: var(--black);
-  font-size: 11px;
+  font-size: 14px;
 }
 
 .filter-control {
@@ -818,7 +914,7 @@ textarea:focus-visible {
   background: transparent;
   color: var(--black);
   cursor: pointer;
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 650;
 }
 
@@ -848,7 +944,7 @@ th {
   border-bottom: 1px solid var(--bone);
   background: #faf9f5;
   color: var(--mid-gray);
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 780;
   letter-spacing: 0.8px;
   text-align: left;
@@ -859,7 +955,7 @@ td {
   padding: 12px 14px;
   border-bottom: 1px solid #efede6;
   color: var(--deep-gray);
-  font-size: 11px;
+  font-size: 14px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -884,7 +980,7 @@ tbody tr:last-child td {
   border: 0;
   background: transparent;
   cursor: pointer;
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 780;
   text-align: left;
 }
@@ -896,7 +992,7 @@ tbody tr:last-child td {
   align-items: center;
   gap: 3px;
   color: var(--mid-gray);
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 500;
 }
 
@@ -908,7 +1004,7 @@ tbody tr:last-child td {
   border-radius: 999px;
   background: #f2f2f2;
   color: var(--deep-gray);
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 760;
 }
 
@@ -997,14 +1093,14 @@ tbody tr:last-child td {
 }
 
 .battery-gauge strong {
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .cell-caption {
   display: block;
   margin-top: 2px;
   color: var(--mid-gray);
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .no-data {
@@ -1012,7 +1108,7 @@ tbody tr:last-child td {
 }
 
 .readiness {
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 650;
 }
 
@@ -1033,7 +1129,7 @@ tbody tr:last-child td {
   padding: 4px 7px;
   border-radius: 6px;
   background: #f2f2f2;
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 740;
 }
 
@@ -1047,7 +1143,7 @@ tbody tr:last-child td {
   max-width: 190px;
   overflow: hidden;
   color: var(--deep-gray);
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 690;
   text-overflow: ellipsis;
 }
@@ -1087,11 +1183,11 @@ tbody tr:last-child td {
 
 .empty-issues strong {
   color: var(--black);
-  font-size: 14px;
+  font-size: 16px;
 }
 
 .empty-issues span {
-  font-size: 11px;
+  font-size: 14px;
 }
 
 .issue-list-panel {
@@ -1160,7 +1256,7 @@ tbody tr:last-child td {
   padding: 4px 6px;
   border-radius: 6px;
   color: var(--white);
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 850;
   text-align: center;
 }
@@ -1192,13 +1288,13 @@ tbody tr:last-child td {
 }
 
 .issue-row-copy strong {
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .issue-row-copy small {
   overflow: hidden;
   color: var(--mid-gray);
-  font-size: 10px;
+  font-size: 13px;
   line-height: 1.4;
   text-overflow: ellipsis;
 }
@@ -1208,7 +1304,7 @@ tbody tr:last-child td {
   align-items: center;
   gap: 5px;
   color: #8d897f;
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 650;
   text-transform: uppercase;
 }
@@ -1239,7 +1335,7 @@ tbody tr:last-child td {
 .issue-detail-header p {
   margin: 0;
   color: var(--mid-gray);
-  font-size: 11px;
+  font-size: 14px;
   line-height: 1.5;
 }
 
@@ -1248,7 +1344,7 @@ tbody tr:last-child td {
   align-items: center;
   gap: 8px;
   color: var(--mid-gray);
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
 }
@@ -1259,7 +1355,7 @@ tbody tr:last-child td {
   border-radius: 6px;
   background: var(--red-soft);
   color: var(--red);
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 800;
   text-transform: uppercase;
 }
@@ -1300,17 +1396,17 @@ tbody tr:last-child td {
 }
 
 .recommendation-heading strong {
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .recommendation-heading small {
   color: var(--mid-gray);
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .recommendation-card > p {
   margin: 14px 0;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 620;
   line-height: 1.55;
 }
@@ -1327,7 +1423,7 @@ tbody tr:last-child td {
 
 .recommended-action span {
   color: var(--mid-gray);
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 760;
   letter-spacing: 0.7px;
   text-transform: uppercase;
@@ -1335,7 +1431,7 @@ tbody tr:last-child td {
 
 .recommended-action strong {
   color: var(--violet-dark);
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .ai-button {
@@ -1349,7 +1445,7 @@ tbody tr:last-child td {
   background: var(--violet);
   color: var(--white);
   cursor: pointer;
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 750;
 }
 
@@ -1385,13 +1481,13 @@ tbody tr:last-child td {
 }
 
 .human-gate strong {
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .human-gate p {
   margin: 0;
   color: #6d3025;
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .detail-section {
@@ -1402,7 +1498,7 @@ tbody tr:last-child td {
   display: block;
   margin-bottom: 9px;
   color: var(--mid-gray);
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 800;
   letter-spacing: 1px;
 }
@@ -1421,7 +1517,7 @@ tbody tr:last-child td {
   background: #faf9f5;
   color: var(--deep-gray);
   font-family: var(--font-geist-mono), monospace;
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .evidence-list {
@@ -1452,18 +1548,18 @@ tbody tr:last-child td {
 }
 
 .evidence-item strong {
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .evidence-item p {
   margin: 0;
-  font-size: 10px;
+  font-size: 13px;
   line-height: 1.4;
 }
 
 .evidence-item span {
   color: var(--mid-gray);
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .allowed-actions span {
@@ -1474,7 +1570,7 @@ tbody tr:last-child td {
   border-radius: 6px;
   background: var(--violet-soft);
   color: var(--violet-dark);
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 720;
 }
 
@@ -1501,7 +1597,7 @@ tbody tr:last-child td {
   padding: 11px 13px;
   border-right: 1px solid var(--bone);
   color: var(--mid-gray);
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
 }
@@ -1512,7 +1608,7 @@ tbody tr:last-child td {
 
 .issue-heading-metrics strong {
   color: var(--black);
-  font-size: 17px;
+  font-size: 19px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1523,7 +1619,7 @@ tbody tr:last-child td {
 
 .issue-workspace {
   display: grid;
-  grid-template-columns: minmax(190px, 220px) minmax(0, 1fr) minmax(360px, 420px);
+  grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
   align-items: start;
   gap: 14px;
 }
@@ -1549,7 +1645,7 @@ tbody tr:last-child td {
 }
 
 .issue-conversation-title strong {
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .issue-conversation-section {
@@ -1570,7 +1666,7 @@ tbody tr:last-child td {
   justify-content: space-between;
   padding: 0 5px 6px;
   color: var(--mid-gray);
-  font-size: 7px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.7px;
   text-transform: uppercase;
@@ -1625,12 +1721,12 @@ tbody tr:last-child td {
 }
 
 .issue-conversation-list strong {
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .issue-conversation-list small {
   color: var(--mid-gray);
-  font-size: 7px;
+  font-size: 11px;
 }
 
 .priority-dot {
@@ -1680,12 +1776,12 @@ tbody tr:last-child td {
 }
 
 .kanban-toolbar strong {
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .kanban-toolbar span {
   color: var(--mid-gray);
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .auto-triage-chip {
@@ -1751,12 +1847,12 @@ tbody tr:last-child td {
 }
 
 .kanban-column-header strong {
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .kanban-column-header small {
   color: var(--mid-gray);
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .kanban-column-header b {
@@ -1767,7 +1863,7 @@ tbody tr:last-child td {
   border-radius: 999px;
   background: var(--white);
   color: var(--deep-gray);
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .kanban-cards {
@@ -1817,7 +1913,7 @@ tbody tr:last-child td {
 .kanban-card-top small {
   overflow: hidden;
   color: var(--mid-gray);
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 720;
   text-overflow: ellipsis;
   text-transform: uppercase;
@@ -1834,7 +1930,7 @@ tbody tr:last-child td {
 }
 
 .kanban-card > strong {
-  font-size: 11px;
+  font-size: 14px;
   line-height: 1.35;
 }
 
@@ -1843,7 +1939,7 @@ tbody tr:last-child td {
   overflow: hidden;
   margin: 0;
   color: var(--mid-gray);
-  font-size: 9px;
+  font-size: 12px;
   line-height: 1.45;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -1856,7 +1952,7 @@ tbody tr:last-child td {
   border-radius: 7px;
   background: #f7f4ff;
   color: var(--violet-dark);
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 720;
   line-height: 1.3;
 }
@@ -1864,7 +1960,7 @@ tbody tr:last-child td {
 .kanban-card-footer {
   justify-content: space-between;
   color: #8d897f;
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .kanban-card-footer span {
@@ -1880,7 +1976,7 @@ tbody tr:last-child td {
   border: 1px dashed #d6d2c8;
   border-radius: 9px;
   color: #aaa69c;
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .ticket-inspector {
@@ -1889,13 +1985,81 @@ tbody tr:last-child td {
   overscroll-behavior: contain;
 }
 
+.recommendation-dialog-layer {
+  position: fixed;
+  z-index: 60;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: clamp(18px, 4vw, 48px);
+}
+
+.recommendation-dialog-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(18, 14, 25, 0.58);
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+}
+
+.recommendation-dialog {
+  position: relative;
+  top: auto;
+  z-index: 1;
+  width: min(880px, 100%);
+  max-height: calc(100vh - 72px);
+  padding: clamp(20px, 3vw, 32px);
+  border: 1px solid rgba(100, 58, 237, 0.2);
+  box-shadow: 0 30px 90px rgba(21, 14, 35, 0.34);
+  animation: recommendation-dialog-in 180ms ease-out;
+}
+
+.issue-detail-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.recommendation-dialog-close {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 1px solid var(--bone);
+  border-radius: 10px;
+  background: var(--white);
+  color: var(--deep-gray);
+  cursor: pointer;
+}
+
+.recommendation-dialog-close:hover,
+.recommendation-dialog-close:focus-visible {
+  border-color: var(--violet);
+  color: var(--violet);
+  outline: none;
+}
+
+@keyframes recommendation-dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 .ticket-status-chip {
   flex: 0 0 auto;
   padding: 5px 8px;
   border-radius: 999px;
   background: #efede7;
   color: var(--deep-gray);
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 800;
   text-transform: uppercase;
 }
@@ -1926,18 +2090,24 @@ tbody tr:last-child td {
 }
 
 .issue-lifecycle-card {
-  display: grid;
-  align-items: center;
+  display: flex;
   gap: 9px;
   margin-top: 12px;
   padding: 10px;
   border: 1px solid rgba(196, 55, 43, 0.18);
   border-radius: 10px;
   background: rgba(196, 55, 43, 0.055);
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  flex-direction: column;
 }
 
-.issue-lifecycle-card > span {
+.issue-lifecycle-summary {
+  display: grid;
+  align-items: center;
+  gap: 9px;
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.issue-lifecycle-summary > span {
   display: grid;
   width: 30px;
   height: 30px;
@@ -1947,32 +2117,21 @@ tbody tr:last-child td {
   color: var(--red);
 }
 
-.issue-lifecycle-card > div {
+.issue-lifecycle-summary > div {
   display: flex;
   min-width: 0;
   flex-direction: column;
   gap: 3px;
 }
 
-.issue-lifecycle-card strong {
-  font-size: 9px;
+.issue-lifecycle-summary strong {
+  font-size: 12px;
 }
 
-.issue-lifecycle-card small {
+.issue-lifecycle-summary small {
   color: var(--mid-gray);
-  font-size: 7px;
+  font-size: 11px;
   line-height: 1.4;
-}
-
-.issue-lifecycle-card > button {
-  padding: 8px 10px;
-  border: 0;
-  border-radius: 7px;
-  background: var(--violet);
-  color: var(--white);
-  cursor: pointer;
-  font-size: 8px;
-  font-weight: 760;
 }
 
 .lifecycle-ready_for_release {
@@ -1980,7 +2139,7 @@ tbody tr:last-child td {
   background: rgba(100, 58, 237, 0.06);
 }
 
-.lifecycle-ready_for_release > span {
+.lifecycle-ready_for_release .issue-lifecycle-summary > span {
   color: var(--violet);
 }
 
@@ -1990,9 +2149,126 @@ tbody tr:last-child td {
   background: rgba(33, 132, 86, 0.06);
 }
 
-.lifecycle-auto_cleared > span,
-.lifecycle-released > span {
+.lifecycle-auto_cleared .issue-lifecycle-summary > span,
+.lifecycle-released .issue-lifecycle-summary > span {
   color: #176b43;
+}
+
+.approval-review {
+  display: grid;
+  gap: 8px;
+  padding-top: 9px;
+  border-top: 1px solid rgba(100, 58, 237, 0.14);
+}
+
+.approval-review-heading,
+.approval-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.approval-review-heading > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.approval-review-heading strong {
+  font-size: 12px;
+}
+
+.approval-review-heading small,
+.approval-action small {
+  color: var(--mid-gray);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.approval-review-heading > span {
+  padding: 3px 6px;
+  border-radius: 99px;
+  background: rgba(33, 132, 86, 0.1);
+  color: #176b43;
+  font-size: 11px;
+  font-weight: 760;
+}
+
+.approval-evidence-list,
+.approval-policy-list {
+  display: grid;
+  gap: 5px;
+}
+
+.approval-evidence-list > button,
+.approval-policy-list > button {
+  display: grid;
+  width: 100%;
+  align-items: start;
+  gap: 7px;
+  padding: 8px;
+  border: 1px solid rgba(33, 132, 86, 0.16);
+  border-radius: 8px;
+  background: var(--white);
+  color: #176b43;
+  cursor: pointer;
+  font: inherit;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  text-align: left;
+}
+
+.approval-evidence-list > button > span,
+.approval-policy-list > button > span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.approval-evidence-list strong,
+.approval-policy-list strong {
+  color: var(--deep-gray);
+  font-size: 11px;
+}
+
+.approval-evidence-list small,
+.approval-policy-list small {
+  color: var(--deep-gray);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.approval-evidence-list em {
+  color: var(--mid-gray);
+  font-size: 10px;
+  font-style: normal;
+}
+
+.approval-policy-list > button {
+  border-color: rgba(100, 58, 237, 0.14);
+  color: var(--violet);
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.approval-action {
+  padding-top: 2px;
+}
+
+.approval-action > small {
+  max-width: 62%;
+}
+
+.approval-action > button {
+  flex: 0 0 auto;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--violet);
+  color: var(--white);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 760;
 }
 
 .recovery-toast .toast-icon {
@@ -2001,7 +2277,7 @@ tbody tr:last-child td {
 
 .assignment-resolution {
   display: grid;
-  gap: 7px;
+  gap: 9px;
   margin-top: 10px;
   padding: 11px;
   border: 1px solid rgba(87, 43, 222, 0.18);
@@ -2009,35 +2285,169 @@ tbody tr:last-child td {
   background: rgba(87, 43, 222, 0.045);
 }
 
-.assignment-resolution strong {
-  font-size: 9px;
-}
-
-.assignment-resolution small {
-  color: var(--mid-gray);
-  font-size: 7px;
-}
-
-.assignment-resolution > div {
+.assignment-resolution-heading {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
 }
 
-.assignment-resolution button {
-  padding: 7px 9px;
+.assignment-resolution-heading > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.assignment-resolution-heading strong {
+  color: var(--deep-gray);
+  font-size: 12px;
+}
+
+.assignment-resolution-heading small,
+.assignment-resolution-note {
+  color: var(--mid-gray);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.assignment-resolution-heading > span {
+  flex: 0 0 auto;
+  padding: 3px 6px;
+  border-radius: 99px;
+  background: var(--violet-soft);
+  color: var(--violet-dark);
+  font-size: 11px;
+  font-weight: 760;
+}
+
+.assignment-order-list {
+  display: grid;
+  gap: 7px;
+}
+
+.assignment-order-card {
+  position: relative;
+  display: flex;
+  width: 100%;
+  padding: 10px;
   border: 1px solid rgba(87, 43, 222, 0.22);
-  border-radius: 7px;
+  border-radius: 9px;
   background: var(--white);
-  color: var(--violet);
+  color: var(--deep-gray);
   font: inherit;
-  font-size: 8px;
-  font-weight: 700;
   cursor: pointer;
+  flex-direction: column;
+  gap: 7px;
+  text-align: left;
+  transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
 }
 
-.assignment-resolution button:hover {
-  background: rgba(87, 43, 222, 0.08);
+.assignment-order-card:hover,
+.assignment-order-card:focus-visible {
+  border-color: var(--violet);
+  box-shadow: 0 7px 18px rgba(87, 43, 222, 0.12);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.assignment-order-topline,
+.assignment-order-merchant,
+.assignment-order-choice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.assignment-order-topline strong {
+  font-size: 12px;
+}
+
+.assignment-order-topline b {
+  padding: 3px 6px;
+  border-radius: 5px;
+  background: #f1f0ec;
+  color: var(--mid-gray);
+  font-size: 10px;
+}
+
+.assignment-order-merchant {
+  align-items: baseline;
+  font-size: 11px;
+  font-weight: 680;
+}
+
+.assignment-order-merchant small {
+  color: var(--mid-gray);
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.assignment-order-facts {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: 1fr 0.8fr 1fr;
+}
+
+.assignment-order-facts > span {
+  display: flex;
+  min-width: 0;
+  color: var(--deep-gray);
+  font-size: 11px;
+  font-weight: 650;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.assignment-order-facts small,
+.assignment-order-hover small {
+  color: var(--mid-gray);
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.assignment-order-choice {
+  justify-content: flex-end;
+  padding-top: 6px;
+  border-top: 1px solid var(--bone);
+  color: var(--violet);
+  font-size: 11px;
+  font-weight: 760;
+}
+
+.assignment-order-hover {
+  display: none;
+  width: 100%;
+  padding: 9px 0 0;
+  border-top: 1px dashed rgba(87, 43, 222, 0.18);
+  color: var(--deep-gray);
+  cursor: default;
+  flex-direction: column;
+  gap: 7px;
+  pointer-events: none;
+}
+
+.assignment-order-card:hover .assignment-order-hover,
+.assignment-order-card:focus-visible .assignment-order-hover {
+  display: flex;
+}
+
+.assignment-order-hover > strong {
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--bone);
+  font-size: 12px;
+}
+
+.assignment-order-hover > span {
+  display: flex;
+  font-size: 11px;
+  line-height: 1.35;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.assignment-resolution-note {
+  display: block;
 }
 
 .ticket-workflow button {
@@ -2052,7 +2462,7 @@ tbody tr:last-child td {
   background: transparent;
   color: var(--mid-gray);
   cursor: pointer;
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 720;
 }
 
@@ -2079,7 +2489,7 @@ tbody tr:last-child td {
 }
 
 .recommended-action-primary strong {
-  font-size: 13px;
+  font-size: 15px;
   line-height: 1.25;
 }
 
@@ -2089,7 +2499,7 @@ tbody tr:last-child td {
   gap: 8px;
   margin-top: 10px;
   color: var(--mid-gray);
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .recommendation-meta button {
@@ -2103,7 +2513,7 @@ tbody tr:last-child td {
   background: var(--white);
   color: var(--violet-dark);
   cursor: pointer;
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 730;
 }
 
@@ -2142,12 +2552,12 @@ tbody tr:last-child td {
 }
 
 .coordination-header strong {
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .coordination-header small {
   color: var(--mid-gray);
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .draft-ready {
@@ -2155,7 +2565,7 @@ tbody tr:last-child td {
   border-radius: 999px;
   background: rgba(203, 232, 0, 0.23);
   color: #536100;
-  font-size: 7px;
+  font-size: 11px;
   font-weight: 800;
   text-transform: uppercase;
 }
@@ -2171,7 +2581,7 @@ tbody tr:last-child td {
 .message-subject > span,
 .message-composer > span {
   color: var(--mid-gray);
-  font-size: 7px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.8px;
 }
@@ -2188,7 +2598,7 @@ tbody tr:last-child td {
 .message-subject input {
   height: 34px;
   padding: 0 9px;
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -2196,7 +2606,7 @@ tbody tr:last-child td {
   min-height: 112px;
   resize: vertical;
   padding: 9px;
-  font-size: 9px;
+  font-size: 12px;
   line-height: 1.5;
 }
 
@@ -2213,7 +2623,7 @@ tbody tr:last-child td {
   align-items: center;
   gap: 4px;
   color: var(--mid-gray);
-  font-size: 7px;
+  font-size: 11px;
 }
 
 .composer-footer button {
@@ -2226,7 +2636,7 @@ tbody tr:last-child td {
   background: var(--violet);
   color: var(--white);
   cursor: pointer;
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 760;
 }
 
@@ -2258,12 +2668,12 @@ tbody tr:last-child td {
 }
 
 .thread-heading strong {
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .thread-heading > span {
   color: var(--mid-gray);
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .thread-heading > button {
@@ -2273,7 +2683,7 @@ tbody tr:last-child td {
   background: var(--white);
   color: var(--violet);
   cursor: pointer;
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 760;
 }
 
@@ -2281,7 +2691,7 @@ tbody tr:last-child td {
   overflow: hidden;
   padding: 11px 12px;
   color: var(--mid-gray);
-  font-size: 8px;
+  font-size: 11px;
   line-height: 1.45;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2311,7 +2721,7 @@ tbody tr:last-child td {
   border-radius: 8px;
   background: var(--violet);
   color: var(--white);
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 800;
 }
 
@@ -2327,12 +2737,12 @@ tbody tr:last-child td {
 }
 
 .message-byline strong {
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .message-byline small {
   color: var(--mid-gray);
-  font-size: 7px;
+  font-size: 11px;
 }
 
 .thread-message p {
@@ -2340,7 +2750,7 @@ tbody tr:last-child td {
   padding: 8px 9px;
   border-radius: 0 8px 8px 8px;
   background: #f4f2ec;
-  font-size: 9px;
+  font-size: 12px;
   line-height: 1.45;
 }
 
@@ -2352,7 +2762,7 @@ tbody tr:last-child td {
   gap: 8px;
   padding: 12px;
   color: var(--mid-gray);
-  font-size: 8px;
+  font-size: 11px;
   line-height: 1.4;
   text-align: left;
 }
@@ -2371,7 +2781,7 @@ tbody tr:last-child td {
   padding: 11px 12px;
   cursor: pointer;
   color: var(--deep-gray);
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 720;
   list-style: none;
 }
@@ -2388,7 +2798,7 @@ tbody tr:last-child td {
 
 .ticket-evidence summary > span:last-child {
   color: var(--mid-gray);
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 600;
 }
 
@@ -2477,7 +2887,7 @@ tbody tr:last-child td {
   align-items: center;
   gap: 5px;
   color: var(--mid-gray);
-  font-size: 10px;
+  font-size: 13px;
   font-weight: 650;
 }
 
@@ -2492,12 +2902,12 @@ tbody tr:last-child td {
 }
 
 .drawer-callout strong {
-  font-size: 13px;
+  font-size: 15px;
 }
 
 .drawer-callout span {
   color: var(--mid-gray);
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .detail-metric-grid {
@@ -2531,12 +2941,12 @@ tbody tr:last-child td {
 
 .definition-list dt {
   color: var(--mid-gray);
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .definition-list dd {
   margin: 0;
-  font-size: 10px;
+  font-size: 13px;
   font-variant-numeric: tabular-nums;
   font-weight: 700;
   text-align: right;
@@ -2562,13 +2972,13 @@ tbody tr:last-child td {
 
 .policy-state-block strong,
 .preflight-summary strong {
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .policy-state-block span,
 .preflight-summary span {
   color: var(--mid-gray);
-  font-size: 9px;
+  font-size: 12px;
   line-height: 1.4;
 }
 
@@ -2614,16 +3024,16 @@ tbody tr:last-child td {
 }
 
 .check-row strong {
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .check-row span {
   color: var(--mid-gray);
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .check-row small {
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 800;
   text-transform: uppercase;
 }
@@ -2661,7 +3071,7 @@ tbody tr:last-child td {
   border-radius: 9px;
   background: #f3f2ee;
   color: var(--mid-gray);
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .live-toast {
@@ -2706,19 +3116,19 @@ tbody tr:last-child td {
 }
 
 .live-toast strong {
-  font-size: 11px;
+  font-size: 14px;
 }
 
 .live-toast small {
   color: var(--mid-gray);
-  font-size: 9px;
+  font-size: 12px;
   line-height: 1.35;
 }
 
 .nav-section-label {
   margin: 15px 15px 3px;
   color: rgba(255, 255, 255, 0.38);
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 1.2px;
 }
@@ -2726,7 +3136,7 @@ tbody tr:last-child td {
 .recommendation-decision {
   margin: 10px 0 0;
   color: var(--deep-gray);
-  font-size: 10px;
+  font-size: 13px;
   line-height: 1.55;
 }
 
@@ -2746,13 +3156,13 @@ tbody tr:last-child td {
   border-radius: 7px;
   background: rgba(100, 58, 237, 0.05);
   color: var(--deep-gray);
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 760;
 }
 
 .recommendation-tool-trace small {
   color: var(--mid-gray);
-  font-size: 7px;
+  font-size: 11px;
   font-weight: 650;
 }
 
@@ -2777,7 +3187,7 @@ tbody tr:last-child td {
   padding: 8px;
   color: var(--deep-gray);
   cursor: pointer;
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 760;
   grid-template-columns: auto 1fr auto auto;
   list-style: none;
@@ -2791,7 +3201,7 @@ tbody tr:last-child td {
   border-radius: 999px;
   background: var(--violet-soft);
   color: var(--violet);
-  font-size: 7px;
+  font-size: 11px;
 }
 
 .recommendation-source-details details[open] summary > svg:last-child {
@@ -2813,7 +3223,7 @@ tbody tr:last-child td {
   background: #f2efe8;
   color: var(--deep-gray);
   font-family: inherit;
-  font-size: 7px;
+  font-size: 11px;
   font-weight: 720;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2840,7 +3250,7 @@ tbody tr:last-child td {
 
 .reference-chip > strong {
   overflow: hidden;
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 760;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2849,7 +3259,7 @@ tbody tr:last-child td {
 .reference-chip > small {
   overflow: hidden;
   color: var(--mid-gray);
-  font-size: 6px;
+  font-size: 10px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2873,7 +3283,7 @@ tbody tr:last-child td {
   background: var(--white);
   box-shadow: 0 12px 32px rgba(25, 20, 35, 0.16);
   color: var(--deep-gray);
-  font-size: 8px;
+  font-size: 11px;
   font-style: normal;
   font-weight: 500;
   line-height: 1.45;
@@ -2887,12 +3297,12 @@ tbody tr:last-child td {
 
 .reference-hover-card b {
   color: var(--black);
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .reference-hover-card em {
   color: var(--violet);
-  font-size: 7px;
+  font-size: 11px;
   font-style: normal;
   font-weight: 750;
 }
@@ -2935,14 +3345,14 @@ tbody tr:last-child td {
 
 .reference-modal > header span {
   color: var(--violet);
-  font-size: 7px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.8px;
 }
 
 .reference-modal > header h2 {
   margin: 4px 0 0;
-  font-size: 17px;
+  font-size: 19px;
 }
 
 .reference-modal > header button {
@@ -2979,7 +3389,7 @@ tbody tr:last-child td {
 
 .reference-modal-body dt {
   color: var(--mid-gray);
-  font-size: 7px;
+  font-size: 11px;
   font-weight: 750;
   letter-spacing: 0.6px;
   text-transform: uppercase;
@@ -2988,14 +3398,14 @@ tbody tr:last-child td {
 .reference-modal-body dd {
   overflow-wrap: anywhere;
   margin: 4px 0 0;
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 680;
 }
 
 .reference-modal-body p {
   margin: 0;
   color: var(--deep-gray);
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.6;
 }
 
@@ -3004,7 +3414,7 @@ tbody tr:last-child td {
   border-left: 3px solid var(--violet);
   background: var(--violet-soft);
   color: var(--deep-gray);
-  font-size: 9px;
+  font-size: 12px;
   line-height: 1.45;
 }
 
@@ -3012,7 +3422,7 @@ tbody tr:last-child td {
   display: block;
   margin-top: 9px;
   color: var(--mid-gray);
-  font-size: 7px;
+  font-size: 11px;
   line-height: 1.4;
 }
 
@@ -3061,7 +3471,7 @@ tbody tr:last-child td {
 
 .issue-chat-window > header span {
   color: var(--violet);
-  font-size: 7px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.7px;
   text-transform: uppercase;
@@ -3069,7 +3479,7 @@ tbody tr:last-child td {
 
 .issue-chat-window > header h2 {
   margin: 4px 0 0;
-  font-size: 16px;
+  font-size: 18px;
 }
 
 .issue-chat-window > header button {
@@ -3094,7 +3504,7 @@ tbody tr:last-child td {
 }
 
 .issue-chat-window-messages .thread-message p {
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .issue-chat-window > footer {
@@ -3117,7 +3527,7 @@ tbody tr:last-child td {
   background: var(--white);
   color: var(--black);
   font: inherit;
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .issue-chat-window > footer textarea:focus {
@@ -3135,7 +3545,7 @@ tbody tr:last-child td {
   background: var(--violet);
   color: var(--white);
   cursor: pointer;
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 760;
 }
 
@@ -3168,7 +3578,7 @@ tbody tr:last-child td {
   border-radius: 8px;
   background: var(--white);
   color: var(--mid-gray);
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 720;
 }
 
@@ -3203,7 +3613,7 @@ tbody tr:last-child td {
 
 .history-summary span {
   color: var(--mid-gray);
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 760;
   letter-spacing: 0.8px;
   text-transform: uppercase;
@@ -3212,14 +3622,14 @@ tbody tr:last-child td {
 .history-summary strong {
   overflow: hidden;
   color: var(--black);
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 820;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .history-summary .history-range strong {
-  font-size: 11px;
+  font-size: 14px;
 }
 
 .history-filters {
@@ -3235,7 +3645,7 @@ tbody tr:last-child td {
   gap: 5px;
   margin-right: 3px;
   color: var(--mid-gray);
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 760;
 }
 
@@ -3253,7 +3663,7 @@ tbody tr:last-child td {
 
 .history-filters label span {
   color: var(--mid-gray);
-  font-size: 7px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.7px;
   text-transform: uppercase;
@@ -3267,7 +3677,7 @@ tbody tr:last-child td {
   outline: 0;
   background: transparent;
   color: var(--deep-gray);
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -3312,7 +3722,7 @@ tbody tr:last-child td {
   background: var(--violet);
   color: var(--white);
   cursor: pointer;
-  font-size: 9px;
+  font-size: 12px;
   font-weight: 760;
 }
 
@@ -3334,7 +3744,7 @@ tbody tr:last-child td {
   justify-content: space-between;
   padding: 0 5px 6px;
   color: var(--mid-gray);
-  font-size: 7px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.7px;
   text-transform: uppercase;
@@ -3360,7 +3770,7 @@ tbody tr:last-child td {
   background: transparent;
   color: var(--deep-gray);
   cursor: pointer;
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 680;
   grid-template-columns: 13px minmax(0, 1fr);
   text-align: left;
@@ -3424,13 +3834,13 @@ tbody tr:last-child td {
 
 .history-chat-header strong,
 .history-evidence-header strong {
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .history-chat-header > span,
 .history-evidence-header > span {
   color: var(--mid-gray);
-  font-size: 8px;
+  font-size: 11px;
 }
 
 .history-chat-header > button {
@@ -3443,7 +3853,7 @@ tbody tr:last-child td {
   background: var(--white);
   color: var(--mid-gray);
   cursor: pointer;
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 720;
 }
 
@@ -3480,7 +3890,7 @@ tbody tr:last-child td {
 
 .history-empty > strong {
   color: var(--black);
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .history-suggestions {
@@ -3498,7 +3908,7 @@ tbody tr:last-child td {
   background: #fbfaf7;
   color: var(--deep-gray);
   cursor: pointer;
-  font-size: 9px;
+  font-size: 12px;
   line-height: 1.4;
   text-align: left;
 }
@@ -3520,7 +3930,7 @@ tbody tr:last-child td {
   border-radius: 11px 11px 3px 11px;
   background: var(--black);
   color: var(--white);
-  font-size: 10px;
+  font-size: 13px;
   line-height: 1.45;
 }
 
@@ -3531,7 +3941,7 @@ tbody tr:last-child td {
 .history-answer > p {
   margin: 7px 0 0;
   color: var(--deep-gray);
-  font-size: 11px;
+  font-size: 14px;
   line-height: 1.65;
 }
 
@@ -3550,7 +3960,7 @@ tbody tr:last-child td {
   border-radius: 5px;
   background: #fbfaf7;
   color: var(--mid-gray);
-  font-size: 7px;
+  font-size: 11px;
   font-weight: 760;
 }
 
@@ -3568,7 +3978,7 @@ tbody tr:last-child td {
   display: block;
   margin-top: 9px;
   color: var(--mid-gray);
-  font-size: 8px;
+  font-size: 11px;
   line-height: 1.5;
 }
 
@@ -3621,7 +4031,7 @@ tbody tr:last-child td {
   outline: 0;
   background: var(--white);
   color: var(--black);
-  font-size: 10px;
+  font-size: 13px;
   line-height: 1.45;
 }
 
@@ -3667,7 +4077,7 @@ tbody tr:last-child td {
 .history-bars span,
 .history-bars strong {
   overflow: hidden;
-  font-size: 8px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -3717,14 +4127,14 @@ tbody tr:last-child td {
   justify-content: space-between;
   gap: 8px;
   color: var(--mid-gray);
-  font-size: 7px;
+  font-size: 11px;
 }
 
 .history-evidence-list article > strong {
   display: block;
   margin-top: 6px;
   color: var(--black);
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .history-evidence-list article p {
@@ -3732,7 +4142,7 @@ tbody tr:last-child td {
   overflow: hidden;
   margin: 4px 0 7px;
   color: var(--deep-gray);
-  font-size: 8px;
+  font-size: 11px;
   line-height: 1.45;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 4;
@@ -3741,7 +4151,7 @@ tbody tr:last-child td {
 .history-evidence-list code {
   color: var(--violet);
   font-family: inherit;
-  font-size: 7px;
+  font-size: 11px;
   font-weight: 760;
 }
 
@@ -3754,7 +4164,7 @@ tbody tr:last-child td {
   color: var(--mid-gray);
   flex-direction: column;
   gap: 8px;
-  font-size: 9px;
+  font-size: 12px;
   line-height: 1.45;
   text-align: center;
 }
@@ -3770,7 +4180,7 @@ tbody tr:last-child td {
   padding: 12px 14px;
   color: var(--deep-gray);
   cursor: pointer;
-  font-size: 8px;
+  font-size: 11px;
   font-weight: 760;
   list-style: none;
 }
@@ -3799,7 +4209,7 @@ tbody tr:last-child td {
 
 .dataset-catalog b,
 .dataset-catalog small {
-  font-size: 7px;
+  font-size: 11px;
 }
 
 .dataset-catalog b {
@@ -3908,8 +4318,12 @@ tbody tr:last-child td {
     padding: 0 4px;
   }
 
+  .sidebar-toggle {
+    display: none;
+  }
+
   .brand-word {
-    font-size: 18px;
+    font-size: 20px;
   }
 
   .brand-product,
@@ -4025,7 +4439,7 @@ tbody tr:last-child td {
   }
 
   .issue-detail-header h2 {
-    font-size: 20px;
+    font-size: 22px;
   }
 
   .issues-page {
@@ -4098,6 +4512,33 @@ tbody tr:last-child td {
   .history-question,
   .history-answer {
     max-width: 100%;
+  }
+}
+
+.recommendation-dialog-layer .recommendation-dialog {
+  position: relative;
+  top: auto;
+  max-height: calc(100vh - 72px);
+}
+
+@media (max-width: 760px) {
+  .recommendation-dialog-layer {
+    padding: 10px;
+  }
+
+  .recommendation-dialog-layer .recommendation-dialog {
+    width: 100%;
+    max-height: calc(100vh - 20px);
+    padding: 18px;
+  }
+
+  .recommendation-dialog .issue-detail-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .issue-detail-actions {
+    justify-content: space-between;
   }
 }
 

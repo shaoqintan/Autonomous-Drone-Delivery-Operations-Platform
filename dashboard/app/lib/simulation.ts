@@ -542,6 +542,9 @@ export function generateSimulation(seed: string): SimulationScenario {
     const gust = random.int(48, 68);
     const wind = random.int(31, Math.min(48, gust - 4));
     const visibility = round(random.int(18, 48) / 10);
+    const recoveryWind = random.int(8, 18);
+    const recoveryGust = random.int(Math.max(14, recoveryWind + 3), 26);
+    const recoveryVisibility = round(random.int(90, 150) / 10);
     weather.push(
       {
         site: site.id,
@@ -558,9 +561,9 @@ export function generateSimulation(seed: string): SimulationScenario {
       {
         site: site.id,
         siteLabel: site.label,
-        wind: random.int(8, 18),
-        gust: random.int(14, 26),
-        visibility: round(random.int(90, 150) / 10),
+        wind: recoveryWind,
+        gust: recoveryGust,
+        visibility: recoveryVisibility,
         condition: "Clear",
         policyState: "normal",
         ruleIds: [],
@@ -603,8 +606,8 @@ export function generateSimulation(seed: string): SimulationScenario {
           evidence(
             `weather-clear:${token}:${site.id}:${recoveryMinute}`,
             "service_area_weather_hourly.csv",
-            "Recovery weather",
-            "Wind, gust, and visibility returned within operating limits",
+            "Current weather observation",
+            `Wind ${recoveryWind} kph (normal <26) · Gust ${recoveryGust} kph (normal <34) · Visibility ${recoveryVisibility} km (normal >7) · Clear`,
             recoveryAt,
           ),
         ],
@@ -639,6 +642,10 @@ export function generateSimulation(seed: string): SimulationScenario {
     if (batteryIncident) {
       drone.batteryCapacity = round(random.int(680, 790) / 10);
       drone.cellSpread = random.int(48, 76);
+      const recoveredCapacity = random.int(88, 98);
+      const recoveredCellSpread = random.int(12, 38);
+      const maintenanceCompletedAt = at(base, recoveryMinute - 8);
+      const workOrderId = `WO-${token}-${drone.droneId.slice(-3)}-BAT`;
       drone.healthStatus = "Grounded";
       drone.policyState = "ground";
       drone.policyRules = ["POL-FLEET-GROUND"];
@@ -676,15 +683,15 @@ export function generateSimulation(seed: string): SimulationScenario {
             evidence(
               `maintenance:${token}:${drone.droneId}`,
               "maintenance_events.csv",
-              "Validated maintenance release",
-              "Battery inspection completed · released",
-              at(base, recoveryMinute - 8),
+              "Completed maintenance work order",
+              `${workOrderId} · Battery pack inspected and load-tested · Technician sign-off: M. Chen · Result: serviceable`,
+              maintenanceCompletedAt,
             ),
             evidence(
               `health-clear:${token}:${drone.droneId}`,
               "drone_health_daily.csv",
-              "Recovery health",
-              "Battery capacity and cell spread returned within limits",
+              "Post-maintenance battery test",
+              `Capacity ${recoveredCapacity}% (must be ≥85% to avoid restriction) · Cell spread ${recoveredCellSpread} mV (must be <45 mV to avoid restriction) · Load test passed`,
               recoveryAt,
             ),
           ],
@@ -694,6 +701,9 @@ export function generateSimulation(seed: string): SimulationScenario {
       );
     } else {
       drone.vibration = round(random.int(22, 30) / 10);
+      const recoveredVibration = round(random.int(11, 19) / 10);
+      const maintenanceCompletedAt = at(base, recoveryMinute - 6);
+      const workOrderId = `WO-${token}-${drone.droneId.slice(-3)}-MTR`;
       drone.healthStatus = "Restricted";
       drone.policyState = "restrict";
       drone.policyRules = ["POL-FLEET-RESTRICT"];
@@ -730,8 +740,15 @@ export function generateSimulation(seed: string): SimulationScenario {
             evidence(
               `maintenance:${token}:${drone.droneId}`,
               "maintenance_events.csv",
-              "Validated maintenance release",
-              "Motor inspection completed · released",
+              "Completed maintenance work order",
+              `${workOrderId} · Motor mount inspected and fasteners re-torqued · Technician sign-off: A. Rivera · Result: serviceable`,
+              maintenanceCompletedAt,
+            ),
+            evidence(
+              `health-clear:${token}:${drone.droneId}`,
+              "flight_telemetry_phases.csv",
+              "Post-maintenance vibration test",
+              `Motor vibration ${recoveredVibration} mm/s (must be <2.2 mm/s to avoid restriction) · Ground-run test passed`,
               recoveryAt,
             ),
           ],

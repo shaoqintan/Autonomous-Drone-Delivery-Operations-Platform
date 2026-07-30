@@ -20,6 +20,8 @@ import {
   MessageSquare,
   PackageCheck,
   Pause,
+  PanelLeftClose,
+  PanelLeftOpen,
   Play,
   RefreshCw,
   RotateCcw,
@@ -646,6 +648,7 @@ export function OperationsDashboard({
 }) {
   const [scenario, setScenario] = useState(initialScenario);
   const [view, setView] = useState<View>("fleet");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [replayIndex, setReplayIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
   const [replaySpeed, setReplaySpeed] = useState(DEFAULT_REPLAY_SPEED);
@@ -1368,11 +1371,24 @@ export function OperationsDashboard({
   }
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
       <aside className="sidebar" aria-label="Primary navigation">
-        <div className="brand-lockup">
-          <span className="brand-word">ZIPLINE</span>
-          <span className="brand-product">Operations</span>
+        <div className="sidebar-header">
+          <div className="brand-lockup">
+            <span className="brand-word">ZIPLINE</span>
+            <span className="brand-product">Operations</span>
+          </div>
+          <span className="brand-mark" aria-hidden="true">Z</span>
+          <button
+            className="sidebar-toggle"
+            type="button"
+            onClick={() => setSidebarCollapsed((current) => !current)}
+            aria-label={sidebarCollapsed ? "Expand navigation" : "Collapse navigation"}
+            aria-expanded={!sidebarCollapsed}
+            title={sidebarCollapsed ? "Expand navigation" : "Collapse navigation"}
+          >
+            {sidebarCollapsed ? <PanelLeftOpen size={20} /> : <PanelLeftClose size={20} />}
+          </button>
         </div>
 
         <div className="product-mode">
@@ -1384,32 +1400,36 @@ export function OperationsDashboard({
           <button
             className={view === "fleet" ? "active" : ""}
             onClick={() => setView("fleet")}
+            title="Fleet"
           >
             <Gauge size={19} />
-            Fleet
+            <span className="nav-label">Fleet</span>
           </button>
           <button
             className={view === "orders" ? "active" : ""}
             onClick={() => setView("orders")}
+            title="Orders"
           >
             <PackageCheck size={19} />
-            Orders
+            <span className="nav-label">Orders</span>
           </button>
           <button
             className={view === "issues" ? "active" : ""}
             onClick={() => openIssues()}
+            title="Issues"
           >
             <ShieldAlert size={19} />
-            Issues
+            <span className="nav-label">Issues</span>
             <span className="nav-badge">{unresolvedIssues.length}</span>
           </button>
           <span className="nav-section-label">ANALYSIS</span>
           <button
             className={view === "history" ? "active" : ""}
             onClick={() => setView("history")}
+            title="History"
           >
             <History size={19} />
-            History
+            <span className="nav-label">History</span>
           </button>
         </nav>
 
@@ -1543,6 +1563,7 @@ export function OperationsDashboard({
           (selectedIssue ? (
             <IssuesView
               issues={activeIssues}
+              orders={projectedOrders}
               selectedIssue={selectedIssue}
               onSelect={setSelectedIssueId}
               recommendation={recommendations[selectedIssue.id]}
@@ -1956,6 +1977,7 @@ function EmptyIssues() {
 
 function IssuesView({
   issues,
+  orders,
   selectedIssue,
   onSelect,
   recommendation,
@@ -1971,6 +1993,7 @@ function IssuesView({
   onResolveConflict,
 }: {
   issues: Issue[];
+  orders: Order[];
   selectedIssue: Issue;
   onSelect: (issueId: string) => void;
   recommendation?: RecommendationResult;
@@ -1995,6 +2018,7 @@ function IssuesView({
   const [draggedIssueId, setDraggedIssueId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [chatOpen, setChatOpen] = useState(false);
+  const [recommendationOpen, setRecommendationOpen] = useState(false);
   const [openReference, setOpenReference] = useState<OpenReference | null>(null);
   const activeRecommendation =
     recommendation ?? buildImmediateRecommendation(selectedIssue);
@@ -2009,6 +2033,21 @@ function IssuesView({
   };
   const selectedStatus = visibleStatus(selectedIssue);
   const selectedMessages = messages[selectedIssue.id] ?? [];
+  const conflictingOrders = selectedIssue.affectedOrderIds
+    .map((orderId) => orders.find((order) => order.orderId === orderId))
+    .filter((order): order is Order => Boolean(order));
+  const approvalPolicyIds = [
+    ...new Set([
+      ...selectedIssue.ruleIds,
+      ...(selectedIssue.effect === "site_weather_hold"
+        ? ["POL-WEATHER-REVIEW"]
+        : []),
+    ]),
+  ].filter((ruleId) =>
+    ["POL-WEATHER-HOLD", "POL-WEATHER-REVIEW", "POL-FLEET-GROUND", "POL-FLEET-RESTRICT"].includes(
+      getPolicyReference(ruleId).policyId,
+    ),
+  );
   const availableEvidence = [
     ...selectedIssue.evidence,
     ...selectedIssue.recoveryEvidence,
@@ -2045,6 +2084,11 @@ function IssuesView({
       activeRecommendation.coordination.channel,
       body,
     );
+  }
+
+  function openRecommendation(issueId: string) {
+    onSelect(issueId);
+    setRecommendationOpen(true);
   }
 
   return (
@@ -2178,7 +2222,7 @@ function IssuesView({
                             issue.id === selectedIssue.id ? "selected" : ""
                           }`}
                           key={issue.id}
-                          onClick={() => onSelect(issue.id)}
+                          onClick={() => openRecommendation(issue.id)}
                           draggable
                           onDragStart={() => setDraggedIssueId(issue.id)}
                           onDragEnd={() => setDraggedIssueId(null)}
@@ -2218,7 +2262,20 @@ function IssuesView({
           </div>
         </section>
 
-        <aside className="panel issue-detail ticket-inspector">
+        {recommendationOpen && (
+          <div
+            className="recommendation-dialog-layer"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Recommendation for ${selectedIssue.title}`}
+          >
+            <button
+              className="recommendation-dialog-backdrop"
+              type="button"
+              onClick={() => setRecommendationOpen(false)}
+              aria-label="Close recommendation"
+            />
+            <aside className="panel issue-detail ticket-inspector recommendation-dialog">
           <div className="issue-detail-header">
             <div>
               <div className="issue-detail-meta">
@@ -2231,41 +2288,111 @@ function IssuesView({
               <h2>{selectedIssue.title}</h2>
               <p>{selectedIssue.summary}</p>
             </div>
-            <span className={`ticket-status-chip ticket-status-${selectedStatus}`}>
-              {columns.find((column) => column.status === selectedStatus)?.label}
-            </span>
+            <div className="issue-detail-actions">
+              <span className={`ticket-status-chip ticket-status-${selectedStatus}`}>
+                {columns.find((column) => column.status === selectedStatus)?.label}
+              </span>
+              <button
+                className="recommendation-dialog-close"
+                type="button"
+                onClick={() => setRecommendationOpen(false)}
+                aria-label="Close recommendation"
+              >
+                <X size={19} />
+              </button>
+            </div>
           </div>
 
           {selectedLifecycle && selectedIssue.effect !== "advisory" && (
             <section
               className={`issue-lifecycle-card lifecycle-${selectedLifecycle.state}`}
             >
-              <span>
-                {selectedLifecycle.state === "ready_for_release" ? (
-                  <CheckCircle2 size={17} />
-                ) : (
-                  <ShieldAlert size={17} />
-                )}
-              </span>
-              <div>
-                <strong>{selectedLifecycle.label}</strong>
-                <small>
-                  {selectedLifecycle.state === "ready_for_release"
-                    ? "The original safety condition has cleared, but operations remain held."
-                    : selectedLifecycle.state === "condition_active"
-                      ? "The operational hold is enforced independently of the ticket status."
-                      : selectedLifecycle.state === "auto_cleared"
-                        ? "Source data cleared this condition automatically."
-                        : "All remaining preflight checks still apply."}
-                </small>
+              <div className="issue-lifecycle-summary">
+                <span>
+                  {selectedLifecycle.state === "ready_for_release" ? (
+                    <CheckCircle2 size={17} />
+                  ) : (
+                    <ShieldAlert size={17} />
+                  )}
+                </span>
+                <div>
+                  <strong>{selectedLifecycle.label}</strong>
+                  <small>
+                    {selectedLifecycle.state === "ready_for_release"
+                      ? "Review the verification records below before releasing the operational hold."
+                      : selectedLifecycle.state === "condition_active"
+                        ? "The operational hold is enforced independently of the ticket status."
+                        : selectedLifecycle.state === "auto_cleared"
+                          ? "Source data cleared this condition automatically."
+                          : "All remaining preflight checks still apply."}
+                  </small>
+                </div>
               </div>
               {selectedLifecycle.state === "ready_for_release" && (
-                <button
-                  type="button"
-                  onClick={() => void onApproveRelease(selectedIssue.id)}
-                >
-                  Approve release
-                </button>
+                <div className="approval-review">
+                  <div className="approval-review-heading">
+                    <div>
+                      <strong>Evidence for approval</strong>
+                      <small>Simulation records · generated for this replay</small>
+                    </div>
+                    <span>{selectedIssue.recoveryEvidence.length} verified</span>
+                  </div>
+
+                  <div className="approval-evidence-list">
+                    {selectedIssue.recoveryEvidence.map((item) => (
+                      <button
+                        type="button"
+                        key={item.id}
+                        onClick={() =>
+                          setOpenReference({ kind: "evidence", value: item })
+                        }
+                      >
+                        <CheckCircle2 size={14} />
+                        <span>
+                          <strong>{item.label}</strong>
+                          <small>{item.value}</small>
+                          <em>
+                            {item.dataset} · {formatTime(item.timestamp, true)}
+                          </em>
+                        </span>
+                        <ArrowRight size={13} />
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="approval-policy-list">
+                    {approvalPolicyIds.map((ruleId) => {
+                        const policy = getPolicyReference(ruleId);
+                        return (
+                          <button
+                            type="button"
+                            key={ruleId}
+                            onClick={() =>
+                              setOpenReference({ kind: "policy", value: policy })
+                            }
+                          >
+                            <ShieldAlert size={13} />
+                            <span>
+                              <strong>{policy.title}</strong>
+                              <small>{policy.text}</small>
+                            </span>
+                          </button>
+                        );
+                      })}
+                  </div>
+
+                  <div className="approval-action">
+                    <small>
+                      Approval removes this hold only. Normal preflight checks still apply.
+                    </small>
+                    <button
+                      type="button"
+                      onClick={() => void onApproveRelease(selectedIssue.id)}
+                    >
+                      Approve release
+                    </button>
+                  </div>
+                </div>
               )}
             </section>
           )}
@@ -2273,21 +2400,87 @@ function IssuesView({
           {selectedIssue.effect === "assignment_conflict" &&
             selectedLifecycle?.blocksOperations && (
               <section className="assignment-resolution">
-                <strong>Select the valid assignment</strong>
-                <small>The other assignment will be removed from this replay.</small>
-                <div>
-                  {selectedIssue.affectedOrderIds.map((orderId) => (
+                <div className="assignment-resolution-heading">
+                  <div>
+                    <strong>Choose the assignment to keep</strong>
+                    <small>
+                      Both orders claim {selectedIssue.entity}. Hover for full details.
+                    </small>
+                  </div>
+                  <span>{conflictingOrders.length} orders</span>
+                </div>
+                <div className="assignment-order-list">
+                  {conflictingOrders.map((order) => (
                     <button
+                      className="assignment-order-card"
                       type="button"
-                      key={orderId}
+                      key={order.orderId}
                       onClick={() =>
-                        void onResolveConflict(selectedIssue.id, orderId)
+                        void onResolveConflict(selectedIssue.id, order.orderId)
                       }
                     >
-                      Keep {orderId}
+                      <span className="assignment-order-topline">
+                        <strong>{order.orderId}</strong>
+                        <b>{displayService(order.serviceLevel)}</b>
+                      </span>
+                      <span className="assignment-order-merchant">
+                        {order.merchant}
+                        <small>{order.merchantCategory}</small>
+                      </span>
+                      <span className="assignment-order-facts">
+                        <span>
+                          <small>Flight</small>
+                          {order.flightId}
+                        </span>
+                        <span>
+                          <small>Launch</small>
+                          {formatTime(order.launchAt)}
+                        </span>
+                        <span>
+                          <small>Destination</small>
+                          {order.zone}
+                        </span>
+                      </span>
+                      <span className="assignment-order-choice">
+                        Keep this assignment
+                        <ArrowRight size={13} />
+                      </span>
+
+                      <span className="assignment-order-hover">
+                        <strong>{order.orderId}</strong>
+                        <span>
+                          <small>Merchant</small>
+                          {order.merchant}
+                        </span>
+                        <span>
+                          <small>Aircraft / flight</small>
+                          {order.droneId} · {order.flightId}
+                        </span>
+                        <span>
+                          <small>Requested / launch</small>
+                          {formatTime(order.requestedAt)} · {formatTime(order.launchAt)}
+                        </span>
+                        <span>
+                          <small>Route</small>
+                          {order.siteLabel} → {order.zone} · {order.distanceKm} km
+                        </span>
+                        <span>
+                          <small>Payload / service</small>
+                          {order.payloadKg} kg · {displayService(order.serviceLevel)} ·{" "}
+                          {order.promisedMinutes} min promise
+                        </span>
+                        <span>
+                          <small>Readiness</small>
+                          {order.readinessLabel}
+                        </span>
+                      </span>
                     </button>
                   ))}
                 </div>
+                <small className="assignment-resolution-note">
+                  Selecting one removes the other aircraft assignment; it does not
+                  cancel the other order.
+                </small>
               </section>
             )}
 
@@ -2532,7 +2725,9 @@ function IssuesView({
               </div>
             </div>
           </details>
-        </aside>
+            </aside>
+          </div>
+        )}
       </div>
 
       {chatOpen && (
