@@ -1239,6 +1239,11 @@ export function OperationsDashboard({
   async function updateTicketStatus(issueId: string, status: TicketStatus) {
     const issue = activeIssues.find((candidate) => candidate.id === issueId);
     const lifecycle = issueLifecycles[issueId];
+    const withdrawingRelease =
+      issue?.clearanceMode === "human_release" &&
+      Boolean(releaseApprovals[issueId]) &&
+      status !== "resolved";
+    const nextStatus: TicketStatus = withdrawingRelease ? "waiting" : status;
     if (
       status === "resolved" &&
       issue?.clearanceMode === "human_release" &&
@@ -1262,14 +1267,33 @@ export function OperationsDashboard({
     }
     const now = new Date().toISOString();
     const previous = ticketRecords[issueId];
+
+    if (withdrawingRelease && issue) {
+      setReleaseApprovals((current) => {
+        const next = { ...current };
+        delete next[issueId];
+        return next;
+      });
+      setOperationalNoticeQueue((current) => [
+        ...current,
+        {
+          id: `release-withdrawn:${issueId}:${now}`,
+          issueId,
+          title: `Release withdrawn · ${issue.entity}`,
+          detail:
+            "The operational hold is active again and waiting for approval. Recovery evidence remains available.",
+        },
+      ]);
+    }
+
     const updated: TicketRecord = {
       issueId,
       scenarioId: scenario.id,
-      status,
-      owner: status === "new" ? previous?.owner ?? "Unassigned" : "You",
+      status: nextStatus,
+      owner: nextStatus === "new" ? previous?.owner ?? "Unassigned" : "You",
       createdAt: previous?.createdAt ?? now,
       updatedAt: now,
-      resolvedAt: status === "resolved" ? now : null,
+      resolvedAt: nextStatus === "resolved" ? now : null,
     };
     setTicketRecords((current) => ({ ...current, [issueId]: updated }));
   }
