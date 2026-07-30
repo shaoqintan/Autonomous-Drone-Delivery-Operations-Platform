@@ -251,6 +251,24 @@ textarea:focus-visible {
   font-weight: 800;
 }
 
+.simulation-seed {
+  padding: 6px 9px;
+  border: 1px solid var(--bone);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.65);
+  color: var(--mid-gray);
+  cursor: pointer;
+  font: inherit;
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.35px;
+}
+
+.simulation-seed:hover {
+  border-color: var(--violet);
+  color: var(--violet);
+}
+
 .replay-selector {
   display: flex;
   flex-direction: column;
@@ -1907,6 +1925,121 @@ tbody tr:last-child td {
   background: #f2f0ea;
 }
 
+.issue-lifecycle-card {
+  display: grid;
+  align-items: center;
+  gap: 9px;
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid rgba(196, 55, 43, 0.18);
+  border-radius: 10px;
+  background: rgba(196, 55, 43, 0.055);
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.issue-lifecycle-card > span {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--white);
+  color: var(--red);
+}
+
+.issue-lifecycle-card > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.issue-lifecycle-card strong {
+  font-size: 9px;
+}
+
+.issue-lifecycle-card small {
+  color: var(--mid-gray);
+  font-size: 7px;
+  line-height: 1.4;
+}
+
+.issue-lifecycle-card > button {
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--violet);
+  color: var(--white);
+  cursor: pointer;
+  font-size: 8px;
+  font-weight: 760;
+}
+
+.lifecycle-ready_for_release {
+  border-color: rgba(100, 58, 237, 0.22);
+  background: rgba(100, 58, 237, 0.06);
+}
+
+.lifecycle-ready_for_release > span {
+  color: var(--violet);
+}
+
+.lifecycle-auto_cleared,
+.lifecycle-released {
+  border-color: rgba(33, 132, 86, 0.2);
+  background: rgba(33, 132, 86, 0.06);
+}
+
+.lifecycle-auto_cleared > span,
+.lifecycle-released > span {
+  color: #176b43;
+}
+
+.recovery-toast .toast-icon {
+  background: #176b43;
+}
+
+.assignment-resolution {
+  display: grid;
+  gap: 7px;
+  margin-top: 10px;
+  padding: 11px;
+  border: 1px solid rgba(87, 43, 222, 0.18);
+  border-radius: 9px;
+  background: rgba(87, 43, 222, 0.045);
+}
+
+.assignment-resolution strong {
+  font-size: 9px;
+}
+
+.assignment-resolution small {
+  color: var(--mid-gray);
+  font-size: 7px;
+}
+
+.assignment-resolution > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.assignment-resolution button {
+  padding: 7px 9px;
+  border: 1px solid rgba(87, 43, 222, 0.22);
+  border-radius: 7px;
+  background: var(--white);
+  color: var(--violet);
+  font: inherit;
+  font-size: 8px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.assignment-resolution button:hover {
+  background: rgba(87, 43, 222, 0.08);
+}
+
 .ticket-workflow button {
   display: flex;
   min-height: 34px;
@@ -2684,6 +2817,195 @@ tbody tr:last-child td {
   font-weight: 720;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.reference-chip-list {
+  overflow: visible;
+}
+
+.reference-chip {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  max-width: 100%;
+  padding: 6px 7px;
+  border: 1px solid #e3dfd5;
+  border-radius: 6px;
+  background: #f7f5ef;
+  color: var(--deep-gray);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.reference-chip > strong {
+  overflow: hidden;
+  font-size: 8px;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reference-chip > small {
+  overflow: hidden;
+  color: var(--mid-gray);
+  font-size: 6px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reference-chip:hover,
+.reference-chip:focus-visible {
+  border-color: rgba(87, 43, 222, 0.38);
+  background: var(--white);
+}
+
+.reference-hover-card {
+  position: absolute;
+  z-index: 25;
+  bottom: calc(100% + 7px);
+  left: 0;
+  display: none;
+  width: min(270px, 70vw);
+  padding: 10px;
+  border: 1px solid #d9d3c5;
+  border-radius: 8px;
+  background: var(--white);
+  box-shadow: 0 12px 32px rgba(25, 20, 35, 0.16);
+  color: var(--deep-gray);
+  font-size: 8px;
+  font-style: normal;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.reference-chip:hover .reference-hover-card,
+.reference-chip:focus-visible .reference-hover-card {
+  display: grid;
+  gap: 5px;
+}
+
+.reference-hover-card b {
+  color: var(--black);
+  font-size: 8px;
+}
+
+.reference-hover-card em {
+  color: var(--violet);
+  font-size: 7px;
+  font-style: normal;
+  font-weight: 750;
+}
+
+.reference-modal-layer {
+  position: fixed;
+  z-index: 95;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+}
+
+.reference-modal-backdrop {
+  position: absolute;
+  border: 0;
+  background: rgba(18, 15, 24, 0.42);
+  cursor: pointer;
+  inset: 0;
+}
+
+.reference-modal {
+  position: relative;
+  width: min(560px, calc(100vw - 36px));
+  overflow: hidden;
+  border: 1px solid var(--bone);
+  border-radius: 13px;
+  background: var(--white);
+  box-shadow: 0 24px 70px rgba(22, 17, 35, 0.24);
+}
+
+.reference-modal > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--bone);
+}
+
+.reference-modal > header span {
+  color: var(--violet);
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+}
+
+.reference-modal > header h2 {
+  margin: 4px 0 0;
+  font-size: 17px;
+}
+
+.reference-modal > header button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid var(--bone);
+  border-radius: 8px;
+  background: var(--white);
+  cursor: pointer;
+}
+
+.reference-modal-body {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+}
+
+.reference-modal-body dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.reference-modal-body dl > div {
+  min-width: 0;
+  padding: 9px;
+  border-radius: 7px;
+  background: #f5f2eb;
+}
+
+.reference-modal-body dt {
+  color: var(--mid-gray);
+  font-size: 7px;
+  font-weight: 750;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+}
+
+.reference-modal-body dd {
+  overflow-wrap: anywhere;
+  margin: 4px 0 0;
+  font-size: 9px;
+  font-weight: 680;
+}
+
+.reference-modal-body p {
+  margin: 0;
+  color: var(--deep-gray);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.reference-modal-body aside {
+  padding: 10px;
+  border-left: 3px solid var(--violet);
+  background: var(--violet-soft);
+  color: var(--deep-gray);
+  font-size: 9px;
+  line-height: 1.45;
 }
 
 .recommendation-safety {

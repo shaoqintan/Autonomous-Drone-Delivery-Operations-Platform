@@ -953,10 +953,10 @@
           "deliveredAt": "2025-05-15T15:11:24",
           "minutesToLaunch": 8,
           "status": "preflight",
-          "readinessStatus": "awaiting_event",
-          "readinessLabel": "Awaiting actual readiness",
-          "readinessEventAt": null,
-          "handoffVerified": null,
+          "readinessStatus": "ready",
+          "readinessLabel": "Ready and verified",
+          "readinessEventAt": "2025-05-15T14:41:48",
+          "handoffVerified": true,
           "payloadKg": 0.97,
           "distanceKm": 6.8,
           "preflightState": "CHECK_INCOMPLETE",
@@ -1005,10 +1005,10 @@
           "deliveredAt": "2025-05-15T15:06:36",
           "minutesToLaunch": 15,
           "status": "preflight",
-          "readinessStatus": "awaiting_event",
-          "readinessLabel": "Awaiting actual readiness",
-          "readinessEventAt": null,
-          "handoffVerified": null,
+          "readinessStatus": "ready",
+          "readinessLabel": "Ready and verified",
+          "readinessEventAt": "2025-05-15T14:53:24",
+          "handoffVerified": true,
           "payloadKg": 0.92,
           "distanceKm": 6.3,
           "preflightState": "CHECK_INCOMPLETE",
@@ -1057,10 +1057,10 @@
           "deliveredAt": "2025-05-15T15:06:36",
           "minutesToLaunch": 19,
           "status": "preflight",
-          "readinessStatus": "awaiting_event",
-          "readinessLabel": "Awaiting actual readiness",
-          "readinessEventAt": null,
-          "handoffVerified": null,
+          "readinessStatus": "ready",
+          "readinessLabel": "Ready and verified",
+          "readinessEventAt": "2025-05-15T14:42:00",
+          "handoffVerified": true,
           "payloadKg": 0.5,
           "distanceKm": 2.2,
           "preflightState": "CHECK_INCOMPLETE",
@@ -1109,10 +1109,10 @@
           "deliveredAt": "2025-05-15T15:20:42",
           "minutesToLaunch": 21,
           "status": "preflight",
-          "readinessStatus": "awaiting_event",
-          "readinessLabel": "Awaiting actual readiness",
-          "readinessEventAt": null,
-          "handoffVerified": null,
+          "readinessStatus": "ready",
+          "readinessLabel": "Ready and verified",
+          "readinessEventAt": "2025-05-15T14:50:54",
+          "handoffVerified": true,
           "payloadKg": 0.68,
           "distanceKm": 4.4,
           "preflightState": "CHECK_INCOMPLETE",
@@ -1161,10 +1161,10 @@
           "deliveredAt": "2025-05-15T15:13:42",
           "minutesToLaunch": 23,
           "status": "preflight",
-          "readinessStatus": "awaiting_event",
-          "readinessLabel": "Awaiting actual readiness",
-          "readinessEventAt": null,
-          "handoffVerified": null,
+          "readinessStatus": "ready",
+          "readinessLabel": "Ready and verified",
+          "readinessEventAt": "2025-05-15T14:49:24",
+          "handoffVerified": true,
           "payloadKg": 1.51,
           "distanceKm": 4.4,
           "preflightState": "CHECK_INCOMPLETE",
@@ -1803,10 +1803,38 @@
             "REMOVE_INVALID_ASSIGNMENT",
             "OPEN_OPERATOR_REVIEW"
           ],
+          "defaultAction": "GROUND_AIRCRAFT",
           "createdAt": "2025-05-15T00:00:00",
           "launchBlocking": true,
           "humanDecisionRequired": true,
-          "status": "open"
+          "status": "open",
+          "effect": "aircraft_ground",
+          "clearanceMode": "human_release",
+          "recoveryAt": "2025-05-21T00:00:00",
+          "recoveryLabel": "Validated maintenance and normal health are available for ZIP-US-011.",
+          "recoveryEvidence": [
+            {
+              "id": "health:2025-05-21:ZIP-US-011",
+              "dataset": "drone_health_daily.csv",
+              "label": "Normal health snapshot",
+              "value": "Capacity 98.8% \u00b7 Spread 19.1 mV \u00b7 Vibration 0.87 mm/s",
+              "timestamp": "2025-05-21T00:00:00"
+            },
+            {
+              "id": "maintenance:MNT-001",
+              "dataset": "maintenance_events.csv",
+              "label": "Validated maintenance release",
+              "value": "battery_pack \u00b7 validated_return_to_service",
+              "timestamp": "2025-05-20T16:00:00"
+            }
+          ],
+          "affectedOrderIds": [
+            "ORD-US-35398",
+            "ORD-US-35414"
+          ],
+          "affectedDroneIds": [
+            "ZIP-US-011"
+          ]
         },
         {
           "id": "ISS-READY-ORD-US-35354",
@@ -1838,10 +1866,30 @@
             "REESTIMATE_PROMISE_FROM_ACTUAL_READY",
             "OPEN_OPERATOR_REVIEW"
           ],
+          "defaultAction": "REESTIMATE_PROMISE_FROM_ACTUAL_READY",
           "createdAt": "2025-05-15T14:33:00",
           "launchBlocking": true,
           "humanDecisionRequired": true,
-          "status": "open"
+          "status": "open",
+          "effect": "order_readiness_hold",
+          "clearanceMode": "automatic",
+          "recoveryAt": "2025-05-15T14:41:48",
+          "recoveryLabel": "Actual readiness confirmed for ORD-US-35354.",
+          "recoveryEvidence": [
+            {
+              "id": "readiness:ME-35355",
+              "dataset": "merchant_readiness_events.csv",
+              "label": "Actual readiness event",
+              "value": "ready_on_time \u00b7 handoff verified TRUE",
+              "timestamp": "2025-05-15T14:41:48"
+            }
+          ],
+          "affectedOrderIds": [
+            "ORD-US-35354"
+          ],
+          "affectedDroneIds": [
+            "ZIP-US-004"
+          ]
         },
         {
           "id": "ISS-READY-ORD-US-35387",
@@ -1873,10 +1921,30 @@
             "REESTIMATE_PROMISE_FROM_ACTUAL_READY",
             "OPEN_OPERATOR_REVIEW"
           ],
+          "defaultAction": "REESTIMATE_PROMISE_FROM_ACTUAL_READY",
           "createdAt": "2025-05-15T14:40:00",
           "launchBlocking": true,
           "humanDecisionRequired": true,
-          "status": "open"
+          "status": "open",
+          "effect": "order_readiness_hold",
+          "clearanceMode": "automatic",
+          "recoveryAt": "2025-05-15T14:53:24",
+          "recoveryLabel": "Actual readiness confirmed for ORD-US-35387.",
+          "recoveryEvidence": [
+            {
+              "id": "readiness:ME-35388",
+              "dataset": "merchant_readiness_events.csv",
+              "label": "Actual readiness event",
+              "value": "ready_on_time \u00b7 handoff verified TRUE",
+              "timestamp": "2025-05-15T14:53:24"
+            }
+          ],
+          "affectedOrderIds": [
+            "ORD-US-35387"
+          ],
+          "affectedDroneIds": [
+            "ZIP-US-015"
+          ]
         },
         {
           "id": "ISS-ASSIGN-ZIP-US-018-202505151440",
@@ -1901,10 +1969,23 @@
             "OPEN_OPERATOR_REVIEW",
             "REMOVE_INVALID_ASSIGNMENT"
           ],
+          "defaultAction": "OPEN_OPERATOR_REVIEW",
           "createdAt": "2025-05-15T14:04:00",
           "launchBlocking": false,
           "humanDecisionRequired": true,
-          "status": "open"
+          "status": "open",
+          "effect": "assignment_conflict",
+          "clearanceMode": "manual_resolution",
+          "recoveryAt": null,
+          "recoveryLabel": null,
+          "recoveryEvidence": [],
+          "affectedOrderIds": [
+            "ORD-US-35416",
+            "ORD-US-35441"
+          ],
+          "affectedDroneIds": [
+            "ZIP-US-018"
+          ]
         },
         {
           "id": "ISS-ASSIGN-ZIP-US-004-202505151440",
@@ -1929,10 +2010,23 @@
             "OPEN_OPERATOR_REVIEW",
             "REMOVE_INVALID_ASSIGNMENT"
           ],
+          "defaultAction": "OPEN_OPERATOR_REVIEW",
           "createdAt": "2025-05-15T14:18:00",
           "launchBlocking": false,
           "humanDecisionRequired": true,
-          "status": "open"
+          "status": "open",
+          "effect": "assignment_conflict",
+          "clearanceMode": "manual_resolution",
+          "recoveryAt": null,
+          "recoveryLabel": null,
+          "recoveryEvidence": [],
+          "affectedOrderIds": [
+            "ORD-US-35354",
+            "ORD-US-35337"
+          ],
+          "affectedDroneIds": [
+            "ZIP-US-004"
+          ]
         }
       ]
     },
@@ -1990,6 +2084,18 @@
           ],
           "observedAt": "2025-05-06T17:00:00",
           "affectedFlights": 3
+        },
+        {
+          "site": "Eastside_Fulfillment",
+          "siteLabel": "Eastside",
+          "wind": 12.6,
+          "gust": 20.9,
+          "visibility": 15.5,
+          "condition": "normal",
+          "policyState": "normal",
+          "ruleIds": [],
+          "observedAt": "2025-05-06T19:00:00",
+          "affectedFlights": 0
         },
         {
           "site": "Northside_Fulfillment",
@@ -2678,10 +2784,10 @@
           "deliveredAt": null,
           "minutesToLaunch": 13,
           "status": "preflight",
-          "readinessStatus": "awaiting_event",
-          "readinessLabel": "Awaiting actual readiness",
-          "readinessEventAt": null,
-          "handoffVerified": null,
+          "readinessStatus": "ready",
+          "readinessLabel": "Ready and verified",
+          "readinessEventAt": "2025-05-06T18:04:06",
+          "handoffVerified": true,
           "payloadKg": 0.67,
           "distanceKm": 7.1,
           "preflightState": "POLICY_HOLD_REQUIRED",
@@ -3598,10 +3704,34 @@
             "REASSIGN_ORDER",
             "CUSTOMER_OUTREACH"
           ],
+          "defaultAction": "HOLD_LAUNCH",
           "createdAt": "2025-05-06T17:00:00",
           "launchBlocking": true,
           "humanDecisionRequired": true,
-          "status": "open"
+          "status": "open",
+          "effect": "site_weather_hold",
+          "clearanceMode": "human_release",
+          "recoveryAt": "2025-05-06T19:00:00",
+          "recoveryLabel": "Weather at Eastside returned within operating limits.",
+          "recoveryEvidence": [
+            {
+              "id": "weather:Eastside_Fulfillment:2025-05-06T19:00:00",
+              "dataset": "service_area_weather_hourly.csv",
+              "label": "Weather recovery observation",
+              "value": "Wind 12.6 kph \u00b7 Gust 20.9 kph \u00b7 Visibility 15.5 km",
+              "timestamp": "2025-05-06T19:00:00"
+            }
+          ],
+          "affectedOrderIds": [
+            "ORD-US-34329",
+            "ORD-US-34351",
+            "ORD-US-34362"
+          ],
+          "affectedDroneIds": [
+            "ZIP-US-018",
+            "ZIP-US-021",
+            "ZIP-US-024"
+          ]
         },
         {
           "id": "ISS-READY-ORD-US-34351",
@@ -3633,10 +3763,30 @@
             "REESTIMATE_PROMISE_FROM_ACTUAL_READY",
             "OPEN_OPERATOR_REVIEW"
           ],
+          "defaultAction": "REESTIMATE_PROMISE_FROM_ACTUAL_READY",
           "createdAt": "2025-05-06T17:43:00",
           "launchBlocking": true,
           "humanDecisionRequired": true,
-          "status": "open"
+          "status": "open",
+          "effect": "order_readiness_hold",
+          "clearanceMode": "automatic",
+          "recoveryAt": "2025-05-06T18:04:06",
+          "recoveryLabel": "Actual readiness confirmed for ORD-US-34351.",
+          "recoveryEvidence": [
+            {
+              "id": "readiness:ME-34352",
+              "dataset": "merchant_readiness_events.csv",
+              "label": "Actual readiness event",
+              "value": "ready_on_time \u00b7 handoff verified TRUE",
+              "timestamp": "2025-05-06T18:04:06"
+            }
+          ],
+          "affectedOrderIds": [
+            "ORD-US-34351"
+          ],
+          "affectedDroneIds": [
+            "ZIP-US-021"
+          ]
         }
       ]
     },
@@ -4510,10 +4660,10 @@
           "deliveredAt": "2025-06-06T12:02:48",
           "minutesToLaunch": 15,
           "status": "preflight",
-          "readinessStatus": "awaiting_event",
-          "readinessLabel": "Awaiting actual readiness",
-          "readinessEventAt": null,
-          "handoffVerified": null,
+          "readinessStatus": "ready",
+          "readinessLabel": "Ready and verified",
+          "readinessEventAt": "2025-06-06T11:45:24",
+          "handoffVerified": true,
           "payloadKg": 1.19,
           "distanceKm": 8.9,
           "preflightState": "CHECK_INCOMPLETE",
@@ -4562,10 +4712,10 @@
           "deliveredAt": "2025-06-06T12:00:36",
           "minutesToLaunch": 15,
           "status": "preflight",
-          "readinessStatus": "awaiting_event",
-          "readinessLabel": "Awaiting actual readiness",
-          "readinessEventAt": null,
-          "handoffVerified": null,
+          "readinessStatus": "ready",
+          "readinessLabel": "Ready and verified",
+          "readinessEventAt": "2025-06-06T11:47:24",
+          "handoffVerified": true,
           "payloadKg": 0.84,
           "distanceKm": 4.4,
           "preflightState": "CHECK_INCOMPLETE",
@@ -4614,10 +4764,10 @@
           "deliveredAt": "2025-06-06T12:16:06",
           "minutesToLaunch": 28,
           "status": "preflight",
-          "readinessStatus": "awaiting_event",
-          "readinessLabel": "Awaiting actual readiness",
-          "readinessEventAt": null,
-          "handoffVerified": null,
+          "readinessStatus": "ready",
+          "readinessLabel": "Ready and verified",
+          "readinessEventAt": "2025-06-06T11:46:12",
+          "handoffVerified": true,
           "payloadKg": 1.27,
           "distanceKm": 9.2,
           "preflightState": "CHECK_INCOMPLETE",
@@ -5357,10 +5507,30 @@
             "REESTIMATE_PROMISE_FROM_ACTUAL_READY",
             "OPEN_OPERATOR_REVIEW"
           ],
+          "defaultAction": "REESTIMATE_PROMISE_FROM_ACTUAL_READY",
           "createdAt": "2025-06-06T11:35:00",
           "launchBlocking": true,
           "humanDecisionRequired": true,
-          "status": "open"
+          "status": "open",
+          "effect": "order_readiness_hold",
+          "clearanceMode": "automatic",
+          "recoveryAt": "2025-06-06T11:45:24",
+          "recoveryLabel": "Actual readiness confirmed for ORD-US-38020.",
+          "recoveryEvidence": [
+            {
+              "id": "readiness:ME-38021",
+              "dataset": "merchant_readiness_events.csv",
+              "label": "Actual readiness event",
+              "value": "ready_on_time \u00b7 handoff verified TRUE",
+              "timestamp": "2025-06-06T11:45:24"
+            }
+          ],
+          "affectedOrderIds": [
+            "ORD-US-38020"
+          ],
+          "affectedDroneIds": [
+            "ZIP-US-008"
+          ]
         },
         {
           "id": "ISS-READY-ORD-US-38053",
@@ -5392,10 +5562,30 @@
             "REESTIMATE_PROMISE_FROM_ACTUAL_READY",
             "OPEN_OPERATOR_REVIEW"
           ],
+          "defaultAction": "REESTIMATE_PROMISE_FROM_ACTUAL_READY",
           "createdAt": "2025-06-06T11:35:00",
           "launchBlocking": true,
           "humanDecisionRequired": true,
-          "status": "open"
+          "status": "open",
+          "effect": "order_readiness_hold",
+          "clearanceMode": "automatic",
+          "recoveryAt": "2025-06-06T11:47:24",
+          "recoveryLabel": "Actual readiness confirmed for ORD-US-38053.",
+          "recoveryEvidence": [
+            {
+              "id": "readiness:ME-38054",
+              "dataset": "merchant_readiness_events.csv",
+              "label": "Actual readiness event",
+              "value": "ready_on_time \u00b7 handoff verified TRUE",
+              "timestamp": "2025-06-06T11:47:24"
+            }
+          ],
+          "affectedOrderIds": [
+            "ORD-US-38053"
+          ],
+          "affectedDroneIds": [
+            "ZIP-US-001"
+          ]
         },
         {
           "id": "ISS-ASSIGN-ZIP-US-016-202506061135",
@@ -5420,10 +5610,23 @@
             "OPEN_OPERATOR_REVIEW",
             "REMOVE_INVALID_ASSIGNMENT"
           ],
+          "defaultAction": "OPEN_OPERATOR_REVIEW",
           "createdAt": "2025-06-06T11:04:00",
           "launchBlocking": false,
           "humanDecisionRequired": true,
-          "status": "open"
+          "status": "open",
+          "effect": "assignment_conflict",
+          "clearanceMode": "manual_resolution",
+          "recoveryAt": null,
+          "recoveryLabel": null,
+          "recoveryEvidence": [],
+          "affectedOrderIds": [
+            "ORD-US-38077",
+            "ORD-US-38093"
+          ],
+          "affectedDroneIds": [
+            "ZIP-US-016"
+          ]
         },
         {
           "id": "ISS-TETHER-ZIP-US-019-2025-06-06",
@@ -5455,10 +5658,35 @@
             "OPEN_OPERATOR_REVIEW",
             "RESTRICT_AND_OPEN_MAINTENANCE_REVIEW"
           ],
+          "defaultAction": "OPEN_OPERATOR_REVIEW",
           "createdAt": "2025-06-06T08:26:56",
           "launchBlocking": false,
           "humanDecisionRequired": true,
-          "status": "open"
+          "status": "open",
+          "effect": "aircraft_restrict",
+          "clearanceMode": "human_release",
+          "recoveryAt": "2025-06-11T00:00:00",
+          "recoveryLabel": "Validated tether maintenance release is available for ZIP-US-019.",
+          "recoveryEvidence": [
+            {
+              "id": "health:2025-06-11:ZIP-US-019",
+              "dataset": "drone_health_daily.csv",
+              "label": "Normal health snapshot",
+              "value": "Capacity 94.0% \u00b7 Spread 23.1 mV \u00b7 Vibration 1.09 mm/s",
+              "timestamp": "2025-06-11T00:00:00"
+            },
+            {
+              "id": "maintenance:MNT-002",
+              "dataset": "maintenance_events.csv",
+              "label": "Validated maintenance release",
+              "value": "tether_descent_motor \u00b7 validated_return_to_service",
+              "timestamp": "2025-06-10T14:00:00"
+            }
+          ],
+          "affectedOrderIds": [],
+          "affectedDroneIds": [
+            "ZIP-US-019"
+          ]
         }
       ]
     },
@@ -6150,10 +6378,10 @@
           "deliveredAt": "2025-04-24T12:34:12",
           "minutesToLaunch": -3,
           "status": "in_flight",
-          "readinessStatus": "awaiting_event",
-          "readinessLabel": "Awaiting actual readiness",
-          "readinessEventAt": null,
-          "handoffVerified": null,
+          "readinessStatus": "ready",
+          "readinessLabel": "Ready and verified",
+          "readinessEventAt": "2025-04-24T12:28:06",
+          "handoffVerified": true,
           "payloadKg": 1.31,
           "distanceKm": 8.9,
           "preflightState": null,
@@ -6358,10 +6586,10 @@
           "deliveredAt": "2025-04-24T12:43:48",
           "minutesToLaunch": 10,
           "status": "preflight",
-          "readinessStatus": "awaiting_event",
-          "readinessLabel": "Awaiting actual readiness",
-          "readinessEventAt": null,
-          "handoffVerified": null,
+          "readinessStatus": "ready",
+          "readinessLabel": "Ready and verified",
+          "readinessEventAt": "2025-04-24T12:32:12",
+          "handoffVerified": true,
           "payloadKg": 1.4,
           "distanceKm": 2.9,
           "preflightState": "CHECK_INCOMPLETE",
@@ -7153,10 +7381,30 @@
             "REESTIMATE_PROMISE_FROM_ACTUAL_READY",
             "OPEN_OPERATOR_REVIEW"
           ],
+          "defaultAction": "REESTIMATE_PROMISE_FROM_ACTUAL_READY",
           "createdAt": "2025-04-24T12:20:00",
           "launchBlocking": true,
           "humanDecisionRequired": true,
-          "status": "open"
+          "status": "open",
+          "effect": "order_readiness_hold",
+          "clearanceMode": "automatic",
+          "recoveryAt": "2025-04-24T12:32:12",
+          "recoveryLabel": "Actual readiness confirmed for ORD-US-32896.",
+          "recoveryEvidence": [
+            {
+              "id": "readiness:ME-32897",
+              "dataset": "merchant_readiness_events.csv",
+              "label": "Actual readiness event",
+              "value": "ready_on_time \u00b7 handoff verified TRUE",
+              "timestamp": "2025-04-24T12:32:12"
+            }
+          ],
+          "affectedOrderIds": [
+            "ORD-US-32896"
+          ],
+          "affectedDroneIds": [
+            "ZIP-US-023"
+          ]
         },
         {
           "id": "ISS-MERCHANT-PASTA-2025-04-24",
@@ -7183,10 +7431,18 @@
             "CUSTOMER_OUTREACH",
             "OPEN_OPERATOR_REVIEW"
           ],
+          "defaultAction": "REESTIMATE_PROMISE_FROM_ACTUAL_READY",
           "createdAt": "2025-04-24T09:58:12",
           "launchBlocking": false,
           "humanDecisionRequired": true,
-          "status": "open"
+          "status": "open",
+          "effect": "advisory",
+          "clearanceMode": "manual_resolution",
+          "recoveryAt": null,
+          "recoveryLabel": null,
+          "recoveryEvidence": [],
+          "affectedOrderIds": [],
+          "affectedDroneIds": []
         }
       ]
     }

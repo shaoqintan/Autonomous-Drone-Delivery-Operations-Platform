@@ -67,7 +67,9 @@ function validateIssue(value: unknown): RecommendationIssue {
     !issue.evidence.length ||
     !Array.isArray(issue.allowedActions) ||
     !issue.allowedActions.length ||
-    !issue.allowedActions.every(isResolutionAction)
+    !issue.allowedActions.every(isResolutionAction) ||
+    !isResolutionAction(issue.defaultAction) ||
+    !issue.allowedActions.includes(issue.defaultAction)
   ) {
     throw new Error("Issue payload failed the deterministic contract");
   }
@@ -366,13 +368,14 @@ const recommendationGraph = new StateGraph(GraphState)
   }))
   .addNode("validate_and_render", async (state) => {
     if (!state.selection) {
-      const actionId = state.issue.allowedActions[0];
+      const actionId = state.issue.defaultAction;
       return {
         result: {
           status: "ready" as const,
           actionId,
           source: "policy_engine" as const,
           evidenceIds: state.issue.evidence.map((item) => item.id),
+          evidence: state.issue.evidence,
           policyRuleIds: state.issue.ruleIds,
           decisionSummary: renderDecisionSummary(
             actionId,
@@ -385,12 +388,20 @@ const recommendationGraph = new StateGraph(GraphState)
         },
       };
     }
+    const availableEvidence = [
+      ...state.issue.evidence,
+      ...state.selection.additionalEvidence,
+    ];
     return {
       result: {
         status: "ready" as const,
         actionId: state.selection.selection.primary_action_id,
         source: "openai" as const,
         evidenceIds: state.selection.selection.evidence_ids,
+        evidence: state.selection.selection.evidence_ids.flatMap((id) => {
+          const match = availableEvidence.find((item) => item.id === id);
+          return match ? [match] : [];
+        }),
         policyRuleIds: state.selection.selection.policy_rule_ids,
         decisionSummary: renderDecisionSummary(
           state.selection.selection.primary_action_id,
@@ -417,12 +428,13 @@ export async function POST(request: Request) {
     const body = (await request.json()) as { issue?: unknown };
     const issue = validateIssue(body.issue);
     if (!process.env.OPENAI_API_KEY) {
-      const actionId = issue.allowedActions[0];
+      const actionId = issue.defaultAction;
       return Response.json({
         status: "ready",
         actionId,
         source: "policy_engine",
         evidenceIds: issue.evidence.map((item) => item.id),
+        evidence: issue.evidence,
         policyRuleIds: issue.ruleIds,
         decisionSummary:
           renderDecisionSummary(
@@ -439,19 +451,20 @@ export async function POST(request: Request) {
     return Response.json(
       state.result ?? {
         status: "ready",
-        actionId: issue.allowedActions[0],
+        actionId: issue.defaultAction,
         source: "policy_engine",
         evidenceIds: issue.evidence.map((item) => item.id),
+        evidence: issue.evidence,
         policyRuleIds: issue.ruleIds,
         decisionSummary:
           renderDecisionSummary(
-            issue.allowedActions[0],
+            issue.defaultAction,
             issue.evidence.map((item) => item.id),
             issue.ruleIds,
           ),
         toolsUsed: [],
         humanDecisionRequired: true,
-        coordination: buildCoordinationPlan(issue, issue.allowedActions[0]),
+        coordination: buildCoordinationPlan(issue, issue.defaultAction),
       },
     );
   } catch (error) {

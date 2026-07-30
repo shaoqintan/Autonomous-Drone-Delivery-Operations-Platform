@@ -2,6 +2,7 @@
 
 import {
   AlertTriangle,
+  Archive,
   ArrowRight,
   Bell,
   Bot,
@@ -31,8 +32,15 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import replayData from "./data/live-scenarios.json";
 import { HistoryWorkspace } from "./history-workspace";
+import {
+  createSimulationSeed,
+  generateSimulation,
+} from "./lib/simulation";
+import {
+  getPolicyReference,
+  type PolicyReference,
+} from "./lib/policy-catalog";
 
 type View = "fleet" | "orders" | "issues" | "history";
 
@@ -54,10 +62,24 @@ type Issue = {
   ruleIds: string[];
   evidence: Evidence[];
   allowedActions: string[];
+  defaultAction: string;
   createdAt: string;
   launchBlocking: boolean;
   humanDecisionRequired: boolean;
   status: string;
+  effect:
+    | "site_weather_hold"
+    | "aircraft_ground"
+    | "aircraft_restrict"
+    | "order_readiness_hold"
+    | "assignment_conflict"
+    | "advisory";
+  clearanceMode: "automatic" | "human_release" | "manual_resolution";
+  recoveryAt: string | null;
+  recoveryLabel: string | null;
+  recoveryEvidence: Evidence[];
+  affectedOrderIds: string[];
+  affectedDroneIds: string[];
 };
 
 type Drone = {
@@ -133,6 +155,8 @@ type Weather = {
 
 type Scenario = {
   id: string;
+  runId: string;
+  seed: string;
   label: string;
   description: string;
   now: string;
@@ -159,6 +183,7 @@ type RecommendationResult =
     actionId: string;
     source: "openai" | "policy_engine";
     evidenceIds: string[];
+    evidence: Evidence[];
     policyRuleIds: string[];
     decisionSummary: string;
     toolsUsed: Array<{
@@ -199,11 +224,37 @@ type ChatMessage = {
   createdAt: string;
 };
 
-const scenarios = replayData.scenarios as Scenario[];
+type IssueLifecycleState =
+  | "condition_active"
+  | "ready_for_release"
+  | "released"
+  | "auto_cleared"
+  | "manual";
+
+type IssueLifecycle = {
+  state: IssueLifecycleState;
+  blocksOperations: boolean;
+  label: string;
+};
+
+type OperationalNotice = {
+  id: string;
+  issueId: string;
+  title: string;
+  detail: string;
+};
+
+type OpenReference =
+  | { kind: "policy"; value: PolicyReference }
+  | { kind: "evidence"; value: Evidence };
+
 const REPLAY_TICK_MS = 750;
 const DEFAULT_REPLAY_SPEED = 1;
 const ISSUE_TICKETS_KEY = "zipline-issue-tickets-v1";
 const ISSUE_MESSAGES_KEY = "zipline-issue-messages-v1";
+const RELEASE_APPROVALS_KEY = "zipline-release-approvals-v1";
+const CONFLICT_RESOLUTIONS_KEY = "zipline-conflict-resolutions-v1";
+const SIMULATION_RUN_KEY = "zipline-simulation-run-v1";
 
 const statusLabels: Record<string, string> = {
   in_flight: "In flight",
@@ -243,7 +294,7 @@ function displayService(value: string) {
 }
 
 function buildImmediateRecommendation(issue: Issue): RecommendationResult {
-  const actionId = issue.allowedActions[0];
+  const actionId = issue.defaultAction;
   let contactName = "Operations control";
   let contactRole = "Duty operator";
   let channel = "Ops control";
@@ -291,6 +342,7 @@ function buildImmediateRecommendation(issue: Issue): RecommendationResult {
     actionId,
     source: "policy_engine",
     evidenceIds: issue.evidence.map((item) => item.id),
+    evidence: issue.evidence,
     policyRuleIds: issue.ruleIds,
     decisionSummary:
       "Selected the first action allowed by the deterministic policy result. Connect OPENAI_API_KEY to enable autonomous tool selection.",
@@ -327,15 +379,132 @@ function projectOrderAtTime(order: Order, replayTime: number): Order | null {
     status = "preflight";
   }
 
+  const projectedReadinessStatus = readinessVisible
+    ? order.readinessStatus
+    : "awaiting_event";
+  const projectedReadinessLabel = readinessVisible
+    ? order.readinessLabel
+    : "Awaiting actual readiness";
+  const projectedHandoff = readinessVisible ? order.handoffVerified : null;
+  const projectedChecks =
+    status === "preflight"
+      ? order.preflightChecks.map((check) =>
+          check.label === "Merchant readiness"
+            ? {
+                ...check,
+                state:
+                  readinessVisible && projectedHandoff === true
+                    ? ("clear" as const)
+                    : ("blocked" as const),
+                detail: projectedReadinessLabel,
+              }
+            : check,
+        )
+      : [];
+  const projectedPreflightState =
+    status !== "preflight"
+      ? null
+      : projectedChecks.some((check) => check.state === "blocked")
+        ? "CHECK_INCOMPLETE"
+        : projectedChecks.some((check) => check.state === "review")
+          ? "OPERATOR_REVIEW_REQUIRED"
+          : "NO_POLICY_EXCEPTION_DETECTED";
+
   return {
     ...order,
     status,
     minutesToLaunch: Math.floor((launchAt - replayTime) / 60_000),
-    readinessStatus: readinessVisible ? order.readinessStatus : "awaiting_event",
-    readinessLabel: readinessVisible ? order.readinessLabel : "Awaiting actual readiness",
-    handoffVerified: readinessVisible ? order.handoffVerified : null,
-    preflightState: status === "preflight" ? order.preflightState : null,
-    preflightChecks: status === "preflight" ? order.preflightChecks : [],
+    readinessStatus: projectedReadinessStatus,
+    readinessLabel: projectedReadinessLabel,
+    handoffVerified: projectedHandoff,
+    preflightState: projectedPreflightState,
+    preflightChecks: projectedChecks,
+  };
+}
+
+function lifecycleForIssue(
+  issue: Issue,
+  replayTime: number,
+  ticket: TicketRecord | undefined,
+  approvedAt: string | undefined,
+): IssueLifecycle {
+  const recovered =
+    issue.recoveryAt !== null && Date.parse(issue.recoveryAt) <= replayTime;
+
+  if (issue.clearanceMode === "automatic") {
+    return recovered
+      ? {
+          state: "auto_cleared",
+          blocksOperations: false,
+          label: issue.recoveryLabel ?? "Condition cleared automatically",
+        }
+      : {
+          state: "condition_active",
+          blocksOperations: issue.effect !== "advisory",
+          label: "Condition active · automatic monitoring",
+        };
+  }
+
+  if (issue.clearanceMode === "human_release") {
+    if (approvedAt && Date.parse(approvedAt) <= replayTime) {
+      return {
+        state: "released",
+        blocksOperations: false,
+        label: "Operator release approved",
+      };
+    }
+    if (recovered) {
+      return {
+        state: "ready_for_release",
+        blocksOperations: true,
+        label: issue.recoveryLabel ?? "Condition cleared · operator release required",
+      };
+    }
+    return {
+      state: "condition_active",
+      blocksOperations: true,
+      label: "Safety condition active · operations automatically held",
+    };
+  }
+
+  const manuallyResolved = ticket?.status === "resolved";
+  return {
+    state: "manual",
+    blocksOperations: issue.effect !== "advisory" && !manuallyResolved,
+    label: manuallyResolved ? "Operator workflow completed" : "Human resolution required",
+  };
+}
+
+function adjustOrderForApprovals(
+  order: Order,
+  issues: Issue[],
+  approvals: Record<string, string>,
+  replayTime: number,
+) {
+  const originalLaunch = Date.parse(order.launchAt);
+  const requiredRelease = issues
+    .filter(
+      (issue) =>
+        issue.clearanceMode === "human_release" &&
+        issue.affectedOrderIds.includes(order.orderId) &&
+        Date.parse(issue.createdAt) <= originalLaunch &&
+        approvals[issue.id] &&
+        Date.parse(approvals[issue.id]) <= replayTime,
+    )
+    .reduce(
+      (latest, issue) =>
+        Math.max(latest, Date.parse(approvals[issue.id]) + 5 * 60_000),
+      originalLaunch,
+    );
+
+  if (requiredRelease <= originalLaunch) return order;
+  const shift = requiredRelease - originalLaunch;
+  return {
+    ...order,
+    launchAt: new Date(requiredRelease).toISOString(),
+    deliveredAt: order.deliveredAt
+      ? new Date(Date.parse(order.deliveredAt) + shift).toISOString()
+      : null,
   };
 }
 
@@ -381,10 +550,16 @@ function createUnifiedScenario(source: Scenario[]): Scenario {
     ...orders.map((order) =>
       Date.parse(order.deliveredAt ?? order.launchAt),
     ),
+    ...issues
+      .filter((issue) => issue.recoveryAt)
+      .map((issue) => Date.parse(issue.recoveryAt as string)),
+    ...weather.map((reading) => Date.parse(reading.observedAt)),
   );
 
   return {
     id: "operations-shift",
+    runId: "operations-shift",
+    seed: "legacy-replay",
     label: "Operations shift",
     description: "",
     now: new Date(timelineEnd).toISOString(),
@@ -406,22 +581,28 @@ function createUnifiedScenario(source: Scenario[]): Scenario {
   };
 }
 
-const unifiedScenario = createUnifiedScenario(scenarios);
-const replayEvents = [
-  Date.parse(unifiedScenario.timelineStart),
-  ...unifiedScenario.orders.flatMap((order) => [
-    Date.parse(order.requestedAt),
-    Date.parse(order.launchAt),
-    ...(order.readinessEventAt ? [Date.parse(order.readinessEventAt)] : []),
-    ...(order.deliveredAt ? [Date.parse(order.deliveredAt)] : []),
-  ]),
-  ...unifiedScenario.issues.map((issue) => Date.parse(issue.createdAt)),
-  ...unifiedScenario.weather.map((reading) => Date.parse(reading.observedAt)),
-  Date.parse(unifiedScenario.timelineEnd),
-]
-  .filter(Number.isFinite)
-  .sort((a, b) => a - b)
-  .filter((value, index, values) => index === 0 || value !== values[index - 1]);
+function createReplayEvents(scenario: Scenario) {
+  return [
+    Date.parse(scenario.timelineStart),
+    ...scenario.orders.flatMap((order) => [
+      Date.parse(order.requestedAt),
+      Date.parse(order.launchAt),
+      ...(order.readinessEventAt ? [Date.parse(order.readinessEventAt)] : []),
+      ...(order.deliveredAt ? [Date.parse(order.deliveredAt)] : []),
+    ]),
+    ...scenario.issues.map((issue) => Date.parse(issue.createdAt)),
+    ...scenario.issues
+    .filter((issue) => issue.recoveryAt)
+    .map((issue) => Date.parse(issue.recoveryAt as string)),
+    ...scenario.weather.map((reading) => Date.parse(reading.observedAt)),
+    Date.parse(scenario.timelineEnd),
+  ]
+    .filter(Number.isFinite)
+    .sort((a, b) => a - b)
+    .filter(
+      (value, index, values) => index === 0 || value !== values[index - 1],
+    );
+}
 
 function PriorityChip({ priority }: { priority: Issue["priority"] }) {
   return <span className={`priority-chip priority-${priority.toLowerCase()}`}>{priority}</span>;
@@ -458,7 +639,12 @@ function Metric({
   );
 }
 
-export function OperationsDashboard() {
+export function OperationsDashboard({
+  initialScenario,
+}: {
+  initialScenario: Scenario;
+}) {
+  const [scenario, setScenario] = useState(initialScenario);
   const [view, setView] = useState<View>("fleet");
   const [replayIndex, setReplayIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
@@ -476,23 +662,28 @@ export function OperationsDashboard() {
   const [recommendationLoading, setRecommendationLoading] = useState<Record<string, boolean>>({});
   const [ticketRecords, setTicketRecords] = useState<Record<string, TicketRecord>>({});
   const [messagesByIssue, setMessagesByIssue] = useState<Record<string, ChatMessage[]>>({});
+  const [releaseApprovals, setReleaseApprovals] = useState<Record<string, string>>({});
+  const [conflictResolutions, setConflictResolutions] = useState<Record<string, string>>({});
+  const [operationalNoticeQueue, setOperationalNoticeQueue] = useState<OperationalNotice[]>([]);
+  const [operationalNotice, setOperationalNotice] = useState<OperationalNotice | null>(null);
   const [workflowBusy] = useState<Record<string, boolean>>({});
   const [workflowLoaded, setWorkflowLoaded] = useState(false);
   const recommendationRequests = useRef(new Set<string>());
-  const previousReplayTime = useRef(Date.parse(unifiedScenario.timelineStart));
+  const previousLifecycleStates = useRef(new Map<string, IssueLifecycleState>());
+  const previousReplayTime = useRef(Date.parse(initialScenario.timelineStart));
   const notifiedIssueIds = useRef(
     new Set(
-      unifiedScenario.issues
+      initialScenario.issues
         .filter(
           (issue) =>
             Date.parse(issue.createdAt) <=
-            Date.parse(unifiedScenario.timelineStart),
+            Date.parse(initialScenario.timelineStart),
         )
         .map((issue) => issue.id),
     ),
   );
 
-  const scenario = unifiedScenario;
+  const replayEvents = useMemo(() => createReplayEvents(scenario), [scenario]);
   const timelineStart = Date.parse(scenario.timelineStart);
   const replayTime = replayEvents[replayIndex] ?? timelineStart;
 
@@ -502,12 +693,136 @@ export function OperationsDashboard() {
   );
   const activeIssueIdsKey = activeIssues.map((issue) => issue.id).join("|");
 
-  const projectedOrders = useMemo(
+  const baseProjectedOrders = useMemo(
     () =>
       scenario.orders
+        .map((order) =>
+          adjustOrderForApprovals(
+            order,
+            scenario.issues,
+            releaseApprovals,
+            replayTime,
+          ),
+        )
         .map((order) => projectOrderAtTime(order, replayTime))
         .filter((order): order is Order => order !== null),
-    [replayTime, scenario],
+    [releaseApprovals, replayTime, scenario],
+  );
+
+  const issueLifecycles = useMemo(
+    () =>
+      Object.fromEntries(
+        activeIssues.map((issue) => [
+          issue.id,
+          lifecycleForIssue(
+            issue,
+            replayTime,
+            ticketRecords[issue.id],
+            releaseApprovals[issue.id],
+          ),
+        ]),
+      ) as Record<string, IssueLifecycle>,
+    [activeIssues, releaseApprovals, replayTime, ticketRecords],
+  );
+
+  const unresolvedIssues = useMemo(
+    () =>
+      activeIssues.filter(
+        (issue) =>
+          issueLifecycles[issue.id]?.blocksOperations ||
+          (ticketRecords[issue.id]?.status ?? "new") !== "resolved",
+      ),
+    [activeIssues, issueLifecycles, ticketRecords],
+  );
+
+  const blockingIssues = useMemo(
+    () =>
+      activeIssues.filter(
+        (issue) => issueLifecycles[issue.id]?.blocksOperations,
+      ),
+    [activeIssues, issueLifecycles],
+  );
+
+  const projectedOrders = useMemo(
+    () =>
+      baseProjectedOrders.map((order) => {
+        const correctedConflict = activeIssues.find(
+          (issue) =>
+            issue.effect === "assignment_conflict" &&
+            Boolean(conflictResolutions[issue.id]) &&
+            issue.affectedOrderIds.includes(order.orderId),
+        );
+        if (
+          correctedConflict &&
+          conflictResolutions[correctedConflict.id] !== order.orderId
+        ) {
+          return {
+            ...order,
+            status: "cancelled",
+            preflightState: null,
+            preflightChecks: [],
+          };
+        }
+
+        const gates = blockingIssues.filter(
+          (issue) =>
+            (issue.affectedOrderIds.includes(order.orderId) ||
+              (issue.effect !== "order_readiness_hold" &&
+                issue.affectedDroneIds.includes(order.droneId))) &&
+            Date.parse(issue.createdAt) <= Date.parse(order.launchAt),
+        );
+        if (
+          !gates.length ||
+          order.status === "cancelled"
+        ) {
+          return order;
+        }
+
+        const checks = [...order.preflightChecks];
+        for (const issue of gates) {
+          const label =
+            issue.effect === "site_weather_hold"
+              ? "Weather release"
+              : issue.effect === "aircraft_ground"
+                ? "Aircraft grounding"
+                : issue.effect === "aircraft_restrict"
+                  ? "Aircraft restriction"
+                  : issue.effect === "assignment_conflict"
+                    ? "Assignment conflict"
+                    : "Merchant readiness";
+          if (!checks.some((check) => check.label === label)) {
+            checks.push({
+              label,
+              state: "blocked",
+              detail: issueLifecycles[issue.id].label,
+            });
+          }
+        }
+
+        const hasGround = gates.some(
+          (issue) => issue.effect === "aircraft_ground",
+        );
+        const hasWeather = gates.some(
+          (issue) => issue.effect === "site_weather_hold",
+        );
+        return {
+          ...order,
+          status: "preflight",
+          preflightState: hasGround
+            ? "POLICY_GROUND_REQUIRED"
+            : hasWeather
+              ? "POLICY_HOLD_REQUIRED"
+              : "CHECK_INCOMPLETE",
+          preflightChecks: checks,
+        };
+      }),
+    [
+      activeIssues,
+      baseProjectedOrders,
+      blockingIssues,
+      conflictResolutions,
+      issueLifecycles,
+    ],
   );
 
   const projectedDrones = useMemo(
@@ -519,17 +834,41 @@ export function OperationsDashboard() {
           .filter((order) => order.status === "preflight" && order.minutesToLaunch <= 30)
           .sort((a, b) => Date.parse(a.launchAt) - Date.parse(b.launchAt));
         const chosen = active[0] ?? upcoming[0] ?? null;
-        const hasSafetyIssue = activeIssues.some(
-          (issue) => issue.entity === drone.droneId,
+        const droneGates = blockingIssues.filter((issue) =>
+          issue.affectedDroneIds.includes(drone.droneId),
         );
-        const safetyLocked =
-          hasSafetyIssue &&
-          ["grounded", "maintenance", "review"].includes(drone.status);
+        const groundGate = droneGates.find(
+          (issue) => issue.effect === "aircraft_ground",
+        );
+        const weatherGate = droneGates.find(
+          (issue) => issue.effect === "site_weather_hold",
+        );
+        const restrictGate = droneGates.find(
+          (issue) =>
+            issue.effect === "aircraft_restrict" ||
+            issue.effect === "assignment_conflict",
+        );
+        const safetyLocked = Boolean(groundGate || weatherGate || restrictGate);
         const hasConflict = active.length > 1 || upcoming.length > 1;
 
         let status = drone.status;
         let activity = drone.activity;
-        if (!safetyLocked) {
+        if (groundGate && active.length) {
+          status = "review";
+          activity = `In flight · landing required · ${issueLifecycles[groundGate.id].label}`;
+        } else if (groundGate) {
+          status = "grounded";
+          activity = issueLifecycles[groundGate.id].label;
+        } else if (weatherGate && active.length) {
+          status = "in_flight";
+          activity = "In flight · weather hold blocks new departures";
+        } else if (weatherGate) {
+          status = "grounded";
+          activity = `Weather hold · ${issueLifecycles[weatherGate.id].label}`;
+        } else if (restrictGate) {
+          status = "review";
+          activity = issueLifecycles[restrictGate.id].label;
+        } else if (!safetyLocked) {
           if (hasConflict) {
             status = "conflict";
             activity = `${Math.max(active.length, upcoming.length)} overlapping assignments`;
@@ -566,7 +905,7 @@ export function OperationsDashboard() {
           assignmentConflict: drone.assignmentConflict || hasConflict,
         };
       }),
-    [activeIssues, projectedOrders, replayTime, scenario],
+    [blockingIssues, issueLifecycles, projectedOrders, replayTime, scenario],
   );
 
   const selectedDrone =
@@ -651,20 +990,18 @@ export function OperationsDashboard() {
 
   useEffect(() => {
     try {
-      const storedTickets = window.localStorage.getItem(ISSUE_TICKETS_KEY);
-      const storedMessages = window.localStorage.getItem(ISSUE_MESSAGES_KEY);
-      if (storedTickets) {
-        const parsed = JSON.parse(storedTickets) as Record<string, TicketRecord>;
-        if (parsed && typeof parsed === "object") setTicketRecords(parsed);
-      }
-      if (storedMessages) {
-        const parsed = JSON.parse(storedMessages) as Record<string, ChatMessage[]>;
-        if (parsed && typeof parsed === "object") setMessagesByIssue(parsed);
-      }
-    } catch {
+      // Workflow state belongs to this page session. Clear values written by
+      // earlier versions so a refresh never revives archived issues or chats.
+      window.localStorage.removeItem(ISSUE_TICKETS_KEY);
+      window.localStorage.removeItem(ISSUE_MESSAGES_KEY);
+      window.localStorage.removeItem(RELEASE_APPROVALS_KEY);
+      window.localStorage.removeItem(CONFLICT_RESOLUTIONS_KEY);
+      window.localStorage.removeItem(SIMULATION_RUN_KEY);
+    } finally {
       setTicketRecords({});
       setMessagesByIssue({});
-    } finally {
+      setReleaseApprovals({});
+      setConflictResolutions({});
       setWorkflowLoaded(true);
     }
   }, []);
@@ -693,13 +1030,76 @@ export function OperationsDashboard() {
 
   useEffect(() => {
     if (!workflowLoaded) return;
-    window.localStorage.setItem(ISSUE_TICKETS_KEY, JSON.stringify(ticketRecords));
-  }, [ticketRecords, workflowLoaded]);
+    const notices: OperationalNotice[] = [];
+    for (const issue of activeIssues) {
+      const lifecycle = issueLifecycles[issue.id];
+      if (!lifecycle) continue;
+      const previous = previousLifecycleStates.current.get(issue.id);
+      previousLifecycleStates.current.set(issue.id, lifecycle.state);
+      if (previous === lifecycle.state) continue;
+
+      if (lifecycle.state === "auto_cleared") {
+        const now = issue.recoveryAt ?? new Date(replayTime).toISOString();
+        const remainingBlocker = blockingIssues.find(
+          (candidate) =>
+            candidate.id !== issue.id &&
+            candidate.affectedOrderIds.some((orderId) =>
+              issue.affectedOrderIds.includes(orderId),
+            ),
+        );
+        notices.push({
+          id: `auto-clear:${issue.id}:${now}`,
+          issueId: issue.id,
+          title: issue.recoveryLabel ?? "Condition cleared",
+          detail: remainingBlocker
+            ? `Readiness hold cleared. Still held: ${remainingBlocker.title}.`
+            : "The automatic hold was cleared from the current preflight state.",
+        });
+      } else if (lifecycle.state === "ready_for_release") {
+        const now = issue.recoveryAt ?? new Date(replayTime).toISOString();
+        setTicketRecords((current) => ({
+          ...current,
+          [issue.id]: {
+            issueId: issue.id,
+            scenarioId: scenario.id,
+            status: "waiting",
+            owner: "You",
+            createdAt: current[issue.id]?.createdAt ?? issue.createdAt,
+            updatedAt: now,
+            resolvedAt: null,
+          },
+        }));
+        notices.push({
+          id: `release-ready:${issue.id}:${now}`,
+          issueId: issue.id,
+          title: issue.recoveryLabel ?? "Condition returned within limits",
+          detail: "Operations remain held until an operator approves release.",
+        });
+      }
+    }
+    if (notices.length) {
+      setOperationalNoticeQueue((current) => [...current, ...notices]);
+    }
+  }, [
+    activeIssues,
+    blockingIssues,
+    issueLifecycles,
+    replayTime,
+    scenario.id,
+    workflowLoaded,
+  ]);
 
   useEffect(() => {
-    if (!workflowLoaded) return;
-    window.localStorage.setItem(ISSUE_MESSAGES_KEY, JSON.stringify(messagesByIssue));
-  }, [messagesByIssue, workflowLoaded]);
+    if (operationalNotice || !operationalNoticeQueue.length) return;
+    setOperationalNotice(operationalNoticeQueue[0]);
+    setOperationalNoticeQueue((current) => current.slice(1));
+  }, [operationalNotice, operationalNoticeQueue]);
+
+  useEffect(() => {
+    if (!operationalNotice) return;
+    const timeout = window.setTimeout(() => setOperationalNotice(null), 5200);
+    return () => window.clearTimeout(timeout);
+  }, [operationalNotice]);
 
   const filteredDrones = useMemo(() => {
     const query = fleetQuery.trim().toLowerCase();
@@ -737,21 +1137,52 @@ export function OperationsDashboard() {
     });
   }, [orderFilter, orderQuery, projectedOrders]);
 
-  function restartReplay() {
+  function resetReplayState(nextScenario: Scenario) {
+    window.localStorage.removeItem(ISSUE_TICKETS_KEY);
+    window.localStorage.removeItem(ISSUE_MESSAGES_KEY);
+    window.localStorage.removeItem(RELEASE_APPROVALS_KEY);
+    window.localStorage.removeItem(CONFLICT_RESOLUTIONS_KEY);
+    window.localStorage.setItem(SIMULATION_RUN_KEY, nextScenario.runId);
+    setTicketRecords({});
+    setMessagesByIssue({});
+    setReleaseApprovals({});
+    setConflictResolutions({});
+    setRecommendations({});
+    setRecommendationLoading({});
+    recommendationRequests.current.clear();
+    setOperationalNoticeQueue([]);
+    setOperationalNotice(null);
+    previousLifecycleStates.current = new Map();
     setReplayIndex(0);
-    previousReplayTime.current = timelineStart;
+    const nextTimelineStart = Date.parse(nextScenario.timelineStart);
+    previousReplayTime.current = nextTimelineStart;
     notifiedIssueIds.current = new Set(
-      scenario.issues
-        .filter((issue) => Date.parse(issue.createdAt) <= timelineStart)
+      nextScenario.issues
+        .filter((issue) => Date.parse(issue.createdAt) <= nextTimelineStart)
         .map((issue) => issue.id),
     );
     setIssueQueue([]);
     setToastIssueId(null);
     setSelectedIssueId(
-      scenario.issues.find((issue) => Date.parse(issue.createdAt) <= timelineStart)?.id ??
+      nextScenario.issues.find(
+        (issue) => Date.parse(issue.createdAt) <= nextTimelineStart,
+      )?.id ??
         null,
     );
+    setSelectedDroneId(null);
+    setSelectedOrderId(null);
     setIsPlaying(true);
+  }
+
+  function restartReplay() {
+    resetReplayState(scenario);
+  }
+
+  function generateNewSimulation() {
+    const nextScenario = generateSimulation(createSimulationSeed()) as Scenario;
+    setScenario(nextScenario);
+    resetReplayState(nextScenario);
+    window.history.replaceState({}, "", window.location.pathname);
   }
 
   function seekReplay(nextIndex: number) {
@@ -803,6 +1234,29 @@ export function OperationsDashboard() {
   }
 
   async function updateTicketStatus(issueId: string, status: TicketStatus) {
+    const issue = activeIssues.find((candidate) => candidate.id === issueId);
+    const lifecycle = issueLifecycles[issueId];
+    if (
+      status === "resolved" &&
+      issue?.clearanceMode === "human_release" &&
+      lifecycle?.state !== "released"
+    ) {
+      return;
+    }
+    if (
+      status === "resolved" &&
+      issue?.clearanceMode === "automatic" &&
+      lifecycle?.state !== "auto_cleared"
+    ) {
+      return;
+    }
+    if (
+      status === "resolved" &&
+      issue?.effect === "assignment_conflict" &&
+      !conflictResolutions[issueId]
+    ) {
+      return;
+    }
     const now = new Date().toISOString();
     const previous = ticketRecords[issueId];
     const updated: TicketRecord = {
@@ -815,6 +1269,74 @@ export function OperationsDashboard() {
       resolvedAt: status === "resolved" ? now : null,
     };
     setTicketRecords((current) => ({ ...current, [issueId]: updated }));
+  }
+
+  async function approveOperationalRelease(issueId: string) {
+    const issue = activeIssues.find((candidate) => candidate.id === issueId);
+    if (!issue || issueLifecycles[issueId]?.state !== "ready_for_release") return;
+    const approvedAt = new Date(replayTime).toISOString();
+    setReleaseApprovals((current) => ({ ...current, [issueId]: approvedAt }));
+    setTicketRecords((current) => ({
+      ...current,
+      [issueId]: {
+        issueId,
+        scenarioId: scenario.id,
+        status: "resolved",
+        owner: "You",
+        createdAt: current[issueId]?.createdAt ?? issue.createdAt,
+        updatedAt: approvedAt,
+        resolvedAt: approvedAt,
+      },
+    }));
+    setOperationalNoticeQueue((current) => [
+      ...current,
+      {
+        id: `release-approved:${issueId}:${approvedAt}`,
+        issueId,
+        title: `Release approved · ${issue.entity}`,
+        detail: "This hold is cleared. All remaining preflight checks still apply.",
+      },
+    ]);
+  }
+
+  async function resolveAssignmentConflict(
+    issueId: string,
+    retainedOrderId: string,
+  ) {
+    const issue = activeIssues.find((candidate) => candidate.id === issueId);
+    if (
+      !issue ||
+      issue.effect !== "assignment_conflict" ||
+      !issue.affectedOrderIds.includes(retainedOrderId)
+    ) {
+      return;
+    }
+    const resolvedAt = new Date(replayTime).toISOString();
+    setConflictResolutions((current) => ({
+      ...current,
+      [issueId]: retainedOrderId,
+    }));
+    setTicketRecords((current) => ({
+      ...current,
+      [issueId]: {
+        issueId,
+        scenarioId: scenario.id,
+        status: "resolved",
+        owner: "You",
+        createdAt: current[issueId]?.createdAt ?? issue.createdAt,
+        updatedAt: resolvedAt,
+        resolvedAt,
+      },
+    }));
+    setOperationalNoticeQueue((current) => [
+      ...current,
+      {
+        id: `assignment-cleared:${issueId}:${resolvedAt}`,
+        issueId,
+        title: `Assignment conflict cleared · ${issue.entity}`,
+        detail: `${retainedOrderId} was retained. The conflicting assignment was removed.`,
+      },
+    ]);
   }
 
   async function sendIssueMessage(
@@ -840,7 +1362,9 @@ export function OperationsDashboard() {
 
   function openIssues(issueId?: string) {
     setView("issues");
-    setSelectedIssueId(issueId ?? activeIssues[0]?.id ?? null);
+    setSelectedIssueId(
+      issueId ?? unresolvedIssues[0]?.id ?? activeIssues[0]?.id ?? null,
+    );
   }
 
   return (
@@ -877,7 +1401,7 @@ export function OperationsDashboard() {
           >
             <ShieldAlert size={19} />
             Issues
-            <span className="nav-badge">{activeIssues.length}</span>
+            <span className="nav-badge">{unresolvedIssues.length}</span>
           </button>
           <span className="nav-section-label">ANALYSIS</span>
           <button
@@ -899,6 +1423,18 @@ export function OperationsDashboard() {
 
           {view !== "history" && (
             <>
+              <button
+                className="simulation-seed"
+                type="button"
+                title="Copy a reproducible simulation link"
+                onClick={() =>
+                  void navigator.clipboard.writeText(
+                    `${window.location.origin}${window.location.pathname}?seed=${encodeURIComponent(scenario.seed)}`,
+                  )
+                }
+              >
+                Seed {scenario.seed}
+              </button>
               <div className="replay-clock">
                 <Clock3 size={16} />
                 <div>
@@ -919,16 +1455,20 @@ export function OperationsDashboard() {
                     ? "Replay again"
                     : "Resume"}
               </button>
+              <button className="replay-action" onClick={generateNewSimulation}>
+                <RefreshCw size={15} />
+                New simulation
+              </button>
             </>
           )}
 
           <button
             className="notification-button"
-            aria-label={`${activeIssues.length} active issues`}
+            aria-label={`${unresolvedIssues.length} active issues`}
             onClick={() => openIssues()}
           >
             <Bell size={19} />
-            <span>{activeIssues.length}</span>
+            <span>{unresolvedIssues.length}</span>
           </button>
         </header>
 
@@ -1011,8 +1551,11 @@ export function OperationsDashboard() {
               tickets={ticketRecords}
               messages={messagesByIssue}
               workflowBusy={workflowBusy}
+              lifecycles={issueLifecycles}
               onStatusChange={updateTicketStatus}
               onSendMessage={sendIssueMessage}
+              onApproveRelease={approveOperationalRelease}
+              onResolveConflict={resolveAssignmentConflict}
             />
           ) : (
             <EmptyIssues />
@@ -1029,7 +1572,22 @@ export function OperationsDashboard() {
       {selectedOrder && (
         <OrderDrawer order={selectedOrder} onClose={() => setSelectedOrderId(null)} />
       )}
-      {toastIssue && (
+      {operationalNotice && (
+        <button
+          className="live-toast recovery-toast"
+          onClick={() => openIssues(operationalNotice.issueId)}
+        >
+          <span className="toast-icon">
+            <CheckCircle2 size={17} />
+          </span>
+          <span>
+            <strong>{operationalNotice.title}</strong>
+            <small>{operationalNotice.detail}</small>
+          </span>
+          <ArrowRight size={17} />
+        </button>
+      )}
+      {toastIssue && !operationalNotice && (
         <button className="live-toast" onClick={() => openIssues(toastIssue.id)}>
           <span className="toast-icon">
             <Bell size={17} />
@@ -1406,8 +1964,11 @@ function IssuesView({
   tickets,
   messages,
   workflowBusy,
+  lifecycles,
   onStatusChange,
   onSendMessage,
+  onApproveRelease,
+  onResolveConflict,
 }: {
   issues: Issue[];
   selectedIssue: Issue;
@@ -1418,34 +1979,55 @@ function IssuesView({
   tickets: Record<string, TicketRecord>;
   messages: Record<string, ChatMessage[]>;
   workflowBusy: Record<string, boolean>;
+  lifecycles: Record<string, IssueLifecycle>;
   onStatusChange: (issueId: string, status: TicketStatus) => Promise<void>;
   onSendMessage: (
     issueId: string,
     channel: string,
     body: string,
   ) => Promise<void>;
+  onApproveRelease: (issueId: string) => Promise<void>;
+  onResolveConflict: (
+    issueId: string,
+    retainedOrderId: string,
+  ) => Promise<void>;
 }) {
   const [draggedIssueId, setDraggedIssueId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [chatOpen, setChatOpen] = useState(false);
+  const [openReference, setOpenReference] = useState<OpenReference | null>(null);
   const activeRecommendation =
     recommendation ?? buildImmediateRecommendation(selectedIssue);
-  const selectedTicket = tickets[selectedIssue.id];
-  const selectedStatus = selectedTicket?.status ?? "new";
+  const selectedLifecycle = lifecycles[selectedIssue.id];
+  const visibleStatus = (issue: Issue): TicketStatus => {
+    const storedStatus = tickets[issue.id]?.status ?? "new";
+    const lifecycle = lifecycles[issue.id];
+    if (storedStatus === "resolved" && lifecycle?.blocksOperations) {
+      return lifecycle.state === "ready_for_release" ? "waiting" : "new";
+    }
+    return storedStatus;
+  };
+  const selectedStatus = visibleStatus(selectedIssue);
   const selectedMessages = messages[selectedIssue.id] ?? [];
+  const availableEvidence = [
+    ...selectedIssue.evidence,
+    ...selectedIssue.recoveryEvidence,
+    ...(activeRecommendation.evidence ?? []),
+  ];
+  const evidenceById = new Map(
+    availableEvidence.map((item) => [item.id, item]),
+  );
   const draft =
     drafts[selectedIssue.id] ??
     activeRecommendation.coordination.draftMessage;
   const openCount = issues.filter(
-    (issue) => (tickets[issue.id]?.status ?? "new") !== "resolved",
+    (issue) => visibleStatus(issue) !== "resolved",
   ).length;
   const waitingCount = issues.filter(
-    (issue) => (tickets[issue.id]?.status ?? "new") === "waiting",
+    (issue) => visibleStatus(issue) === "waiting",
   ).length;
   const blockingCount = issues.filter(
-    (issue) =>
-      issue.launchBlocking &&
-      (tickets[issue.id]?.status ?? "new") !== "resolved",
+    (issue) => issue.launchBlocking && lifecycles[issue.id]?.blocksOperations,
   ).length;
   const columns: Array<{ status: TicketStatus; label: string }> = [
     { status: "new", label: "New" },
@@ -1493,7 +2075,7 @@ function IssuesView({
               <span>
                 {
                   issues.filter(
-                    (issue) => (tickets[issue.id]?.status ?? "new") !== "resolved",
+                    (issue) => visibleStatus(issue) !== "resolved",
                   ).length
                 }
               </span>
@@ -1501,7 +2083,7 @@ function IssuesView({
             <div className="issue-conversation-list">
               {issues
                 .filter(
-                  (issue) => (tickets[issue.id]?.status ?? "new") !== "resolved",
+                  (issue) => visibleStatus(issue) !== "resolved",
                 )
                 .map((issue) => (
                   <button
@@ -1517,7 +2099,7 @@ function IssuesView({
                       <strong>{issue.title}</strong>
                       <small>
                         {messages[issue.id]?.length ?? 0} messages ·{" "}
-                        {displayService(tickets[issue.id]?.status ?? "new")}
+                        {displayService(visibleStatus(issue))}
                       </small>
                     </span>
                   </button>
@@ -1531,14 +2113,14 @@ function IssuesView({
               <span>
                 {
                   issues.filter(
-                    (issue) => tickets[issue.id]?.status === "resolved",
+                    (issue) => visibleStatus(issue) === "resolved",
                   ).length
                 }
               </span>
             </div>
             <div className="issue-conversation-list">
               {issues
-                .filter((issue) => tickets[issue.id]?.status === "resolved")
+                .filter((issue) => visibleStatus(issue) === "resolved")
                 .map((issue) => (
                   <button
                     className={issue.id === selectedIssue.id ? "selected" : ""}
@@ -1563,7 +2145,7 @@ function IssuesView({
           <div className="kanban-board">
             {columns.map((column) => {
               const columnIssues = issues.filter(
-                (issue) => (tickets[issue.id]?.status ?? "new") === column.status,
+                (issue) => visibleStatus(issue) === column.status,
               );
               return (
                 <div
@@ -1613,7 +2195,7 @@ function IssuesView({
                             <Bot size={13} />
                             {displayService(
                               issueRecommendation?.actionId ??
-                                issue.allowedActions[0],
+                            issue.defaultAction,
                             )}
                           </span>
                           <span className="kanban-card-footer">
@@ -1654,13 +2236,77 @@ function IssuesView({
             </span>
           </div>
 
+          {selectedLifecycle && selectedIssue.effect !== "advisory" && (
+            <section
+              className={`issue-lifecycle-card lifecycle-${selectedLifecycle.state}`}
+            >
+              <span>
+                {selectedLifecycle.state === "ready_for_release" ? (
+                  <CheckCircle2 size={17} />
+                ) : (
+                  <ShieldAlert size={17} />
+                )}
+              </span>
+              <div>
+                <strong>{selectedLifecycle.label}</strong>
+                <small>
+                  {selectedLifecycle.state === "ready_for_release"
+                    ? "The original safety condition has cleared, but operations remain held."
+                    : selectedLifecycle.state === "condition_active"
+                      ? "The operational hold is enforced independently of the ticket status."
+                      : selectedLifecycle.state === "auto_cleared"
+                        ? "Source data cleared this condition automatically."
+                        : "All remaining preflight checks still apply."}
+                </small>
+              </div>
+              {selectedLifecycle.state === "ready_for_release" && (
+                <button
+                  type="button"
+                  onClick={() => void onApproveRelease(selectedIssue.id)}
+                >
+                  Approve release
+                </button>
+              )}
+            </section>
+          )}
+
+          {selectedIssue.effect === "assignment_conflict" &&
+            selectedLifecycle?.blocksOperations && (
+              <section className="assignment-resolution">
+                <strong>Select the valid assignment</strong>
+                <small>The other assignment will be removed from this replay.</small>
+                <div>
+                  {selectedIssue.affectedOrderIds.map((orderId) => (
+                    <button
+                      type="button"
+                      key={orderId}
+                      onClick={() =>
+                        void onResolveConflict(selectedIssue.id, orderId)
+                      }
+                    >
+                      Keep {orderId}
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
+
           <div className="ticket-workflow">
             {columns.map((column) => (
               <button
                 className={column.status === selectedStatus ? "active" : ""}
                 key={column.status}
                 onClick={() => void onStatusChange(selectedIssue.id, column.status)}
-                disabled={Boolean(workflowBusy[selectedIssue.id])}
+                disabled={
+                  Boolean(workflowBusy[selectedIssue.id]) ||
+                  (column.status === "resolved" &&
+                    ((selectedIssue.clearanceMode === "human_release" &&
+                      selectedLifecycle?.state !== "released") ||
+                      (selectedIssue.clearanceMode === "automatic" &&
+                        selectedLifecycle?.state !== "auto_cleared") ||
+                      (selectedIssue.effect === "assignment_conflict" &&
+                        selectedLifecycle?.blocksOperations)))
+                }
               >
                 {column.status === "resolved" ? (
                   <CheckCircle2 size={14} />
@@ -1702,10 +2348,28 @@ function IssuesView({
                   <span>{activeRecommendation.policyRuleIds.length}</span>
                   <ChevronDown size={12} />
                 </summary>
-                <div>
-                  {activeRecommendation.policyRuleIds.map((ruleId) => (
-                    <code key={ruleId}>{ruleId}</code>
-                  ))}
+                <div className="reference-chip-list">
+                  {activeRecommendation.policyRuleIds.map((ruleId) => {
+                    const policy = getPolicyReference(ruleId);
+                    return (
+                      <button
+                        className="reference-chip"
+                        type="button"
+                        key={ruleId}
+                        onClick={() =>
+                          setOpenReference({ kind: "policy", value: policy })
+                        }
+                      >
+                        <strong>{policy.title}</strong>
+                        <small>{ruleId}</small>
+                        <span className="reference-hover-card">
+                          <b>{policy.section}</b>
+                          {policy.text}
+                          <em>Click to open full policy</em>
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               </details>
               <details>
@@ -1715,10 +2379,36 @@ function IssuesView({
                   <span>{activeRecommendation.evidenceIds.length}</span>
                   <ChevronDown size={12} />
                 </summary>
-                <div>
-                  {activeRecommendation.evidenceIds.map((evidenceId) => (
-                    <code key={evidenceId}>{evidenceId}</code>
-                  ))}
+                <div className="reference-chip-list">
+                  {activeRecommendation.evidenceIds.map((evidenceId) => {
+                    const item =
+                      evidenceById.get(evidenceId) ?? {
+                        id: evidenceId,
+                        dataset: "Unavailable",
+                        label: "Evidence record unavailable",
+                        value:
+                          "The recommendation returned this ID without the corresponding record.",
+                        timestamp: selectedIssue.createdAt,
+                      };
+                    return (
+                      <button
+                        className="reference-chip"
+                        type="button"
+                        key={evidenceId}
+                        onClick={() =>
+                          setOpenReference({ kind: "evidence", value: item })
+                        }
+                      >
+                        <strong>{item.label}</strong>
+                        <small>{item.dataset}</small>
+                        <span className="reference-hover-card">
+                          <b>{item.label}</b>
+                          {item.value}
+                          <em>Click to open full evidence</em>
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               </details>
             </div>
@@ -1912,6 +2602,83 @@ function IssuesView({
               </button>
             </footer>
           </section>
+        </div>
+      )}
+
+      {openReference && (
+        <div className="reference-modal-layer" role="dialog" aria-modal="true">
+          <button
+            className="reference-modal-backdrop"
+            type="button"
+            onClick={() => setOpenReference(null)}
+            aria-label="Close reference"
+          />
+          <article className="reference-modal">
+            <header>
+              <div>
+                <span>
+                  {openReference.kind === "policy" ? "POLICY" : "EVIDENCE"}
+                </span>
+                <h2>
+                  {openReference.kind === "policy"
+                    ? openReference.value.title
+                    : openReference.value.label}
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOpenReference(null)}
+                aria-label="Close reference"
+              >
+                <X size={18} />
+              </button>
+            </header>
+
+            {openReference.kind === "policy" ? (
+              <div className="reference-modal-body">
+                <dl>
+                  <div>
+                    <dt>Policy ID</dt>
+                    <dd>{openReference.value.policyId}</dd>
+                  </div>
+                  <div>
+                    <dt>Triggered reference</dt>
+                    <dd>{openReference.value.requestedId}</dd>
+                  </div>
+                  <div>
+                    <dt>Section</dt>
+                    <dd>{openReference.value.section}</dd>
+                  </div>
+                  <div>
+                    <dt>Source</dt>
+                    <dd>{openReference.value.source}</dd>
+                  </div>
+                </dl>
+                <p>{openReference.value.text}</p>
+                {openReference.value.note && (
+                  <aside>{openReference.value.note}</aside>
+                )}
+              </div>
+            ) : (
+              <div className="reference-modal-body">
+                <dl>
+                  <div>
+                    <dt>Evidence ID</dt>
+                    <dd>{openReference.value.id}</dd>
+                  </div>
+                  <div>
+                    <dt>Dataset</dt>
+                    <dd>{openReference.value.dataset}</dd>
+                  </div>
+                  <div>
+                    <dt>Timestamp</dt>
+                    <dd>{formatTime(openReference.value.timestamp, true)}</dd>
+                  </div>
+                </dl>
+                <p>{openReference.value.value}</p>
+              </div>
+            )}
+          </article>
         </div>
       )}
     </div>

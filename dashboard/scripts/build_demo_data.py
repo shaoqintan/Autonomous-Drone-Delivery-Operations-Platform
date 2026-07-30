@@ -134,9 +134,19 @@ def make_issue(
     rules: list[str],
     evidence: list[dict],
     actions: list[str],
+    default_action: str,
     created_at: datetime,
     launch_blocking: bool = False,
+    effect: str = "advisory",
+    clearance_mode: str = "manual_resolution",
+    recovery_at: datetime | None = None,
+    recovery_label: str | None = None,
+    recovery_evidence: list[dict] | None = None,
+    affected_order_ids: list[str] | None = None,
+    affected_drone_ids: list[str] | None = None,
 ) -> dict:
+    if default_action not in actions:
+        raise ValueError(f"Default action {default_action} must be in allowed actions")
     return {
         "id": issue_id,
         "priority": priority,
@@ -147,10 +157,18 @@ def make_issue(
         "ruleIds": rules,
         "evidence": evidence,
         "allowedActions": actions,
+        "defaultAction": default_action,
         "createdAt": iso(created_at),
         "launchBlocking": launch_blocking,
         "humanDecisionRequired": True,
         "status": "open",
+        "effect": effect,
+        "clearanceMode": clearance_mode,
+        "recoveryAt": iso(recovery_at) if recovery_at else None,
+        "recoveryLabel": recovery_label,
+        "recoveryEvidence": recovery_evidence or [],
+        "affectedOrderIds": affected_order_ids or [],
+        "affectedDroneIds": affected_drone_ids or [],
     }
 
 
@@ -189,6 +207,76 @@ weather_by_key = {
     for row in weather
 }
 
+def first_normal_weather_after(site: str, after: datetime) -> dict[str, str] | None:
+    candidates = sorted(
+        (
+            row
+            for row in weather
+            if row["fulfillment_site"] == site
+            and (dt(row["observed_at"]) or datetime.min) > after
+            and weather_policy(row)[0] == "normal"
+        ),
+        key=lambda row: row["observed_at"],
+    )
+    return candidates[0] if candidates else None
+
+
+def first_validated_fleet_recovery(
+    drone_id: str,
+    after: datetime,
+) -> tuple[datetime | None, list[dict]]:
+    related_maintenance = sorted(
+        (
+            row
+            for row in maintenance
+            if row["drone_id"] == drone_id
+            and (dt(row["closed_at"]) or datetime.min) > after
+            and row["release_status"] == "validated_return_to_service"
+        ),
+        key=lambda row: row["closed_at"],
+    )
+    release = related_maintenance[0] if related_maintenance else None
+    release_at = dt(release["closed_at"]) if release else after
+    normal_health = sorted(
+        (
+            row
+            for row in health
+            if row["drone_id"] == drone_id
+            and (dt(f"{row['snapshot_date']}T00:00:00") or datetime.min) >= release_at
+            and health_policy(row)[0] == "normal"
+            and row["maintenance_status"] == "operational"
+        ),
+        key=lambda row: row["snapshot_date"],
+    )
+    if not normal_health:
+        return None, []
+    health_row = normal_health[0]
+    recovery_at = dt(f"{health_row['snapshot_date']}T00:00:00")
+    evidence = [
+        {
+            "id": f"health:{health_row['snapshot_date']}:{drone_id}",
+            "dataset": "drone_health_daily.csv",
+            "label": "Normal health snapshot",
+            "value": (
+                f"Capacity {health_row['battery_capacity_pct']}% · "
+                f"Spread {health_row['cell_voltage_spread_mv']} mV · "
+                f"Vibration {health_row['motor_vibration_mm_s']} mm/s"
+            ),
+            "timestamp": f"{health_row['snapshot_date']}T00:00:00",
+        }
+    ]
+    if release:
+        evidence.append(
+            {
+                "id": f"maintenance:{release['maintenance_id']}",
+                "dataset": "maintenance_events.csv",
+                "label": "Validated maintenance release",
+                "value": f"{release['component']} · {release['release_status']}",
+                "timestamp": release["closed_at"],
+            }
+        )
+    return recovery_at, evidence
+
 
 def build_scenario(meta: dict[str, str]) -> dict:
     now = dt(meta["now"])
@@ -225,6 +313,28 @@ def build_scenario(meta: dict[str, str]) -> dict:
             }
         )
         if state in {"hold", "review"}:
+            recovery_weather = first_normal_weather_after(
+                site,
+                dt(raw["observed_at"]) or now,
+            )
+            recovery_at = (
+                dt(recovery_weather["observed_at"]) if recovery_weather else None
+            )
+            if recovery_weather:
+                weather_rows.append(
+                    {
+                        "site": site,
+                        "siteLabel": compact_site(site),
+                        "wind": number(recovery_weather["wind_speed_kph"]),
+                        "gust": number(recovery_weather["wind_gust_kph"]),
+                        "visibility": number(recovery_weather["visibility_km"]),
+                        "condition": recovery_weather["operating_condition"],
+                        "policyState": "normal",
+                        "ruleIds": [],
+                        "observedAt": recovery_weather["observed_at"],
+                        "affectedFlights": 0,
+                    }
+                )
             priority = "P0" if state == "hold" else "P1"
             action = "HOLD_LAUNCH" if state == "hold" else "OPEN_OPERATOR_REVIEW"
             verb = "Hold threshold detected" if state == "hold" else "Review threshold detected"
@@ -247,8 +357,36 @@ def build_scenario(meta: dict[str, str]) -> dict:
                         }
                     ],
                     [action, "DEFER_ORDER", "REASSIGN_ORDER", "CUSTOMER_OUTREACH"],
+                    action,
                     dt(raw["observed_at"]) or now,
                     launch_blocking=state == "hold",
+                    effect="site_weather_hold",
+                    clearance_mode="human_release",
+                    recovery_at=recovery_at,
+                    recovery_label=(
+                        f"Weather at {compact_site(site)} returned within operating limits."
+                        if recovery_at
+                        else None
+                    ),
+                    recovery_evidence=(
+                        [
+                            {
+                                "id": f"weather:{site}:{recovery_weather['observed_at']}",
+                                "dataset": "service_area_weather_hourly.csv",
+                                "label": "Weather recovery observation",
+                                "value": (
+                                    f"Wind {recovery_weather['wind_speed_kph']} kph · "
+                                    f"Gust {recovery_weather['wind_gust_kph']} kph · "
+                                    f"Visibility {recovery_weather['visibility_km']} km"
+                                ),
+                                "timestamp": recovery_weather["observed_at"],
+                            }
+                        ]
+                        if recovery_weather
+                        else []
+                    ),
+                    affected_order_ids=[row["order_id"] for row in affected],
+                    affected_drone_ids=sorted({row["drone_id"] for row in affected}),
                 )
             )
 
@@ -381,8 +519,11 @@ def build_scenario(meta: dict[str, str]) -> dict:
                         "label": "Conflicting assignment",
                         "value": ", ".join(row["flight_id"] for row in related),
                         "timestamp": related[0]["launch_at"],
-                    }
-                )
+                        }
+                    )
+            fleet_recovery_at, fleet_recovery_evidence = (
+                first_validated_fleet_recovery(drone_id, now)
+            )
             issues.append(
                 make_issue(
                     f"ISS-FLEET-{drone_id}-{today}",
@@ -398,11 +539,28 @@ def build_scenario(meta: dict[str, str]) -> dict:
                     sorted(set(rules)),
                     evidence,
                     ["GROUND_AIRCRAFT", "REMOVE_INVALID_ASSIGNMENT", "OPEN_OPERATOR_REVIEW"],
+                    "GROUND_AIRCRAFT",
                     datetime.combine(now.date(), datetime.min.time()),
                     launch_blocking=True,
+                    effect="aircraft_ground",
+                    clearance_mode="human_release",
+                    recovery_at=fleet_recovery_at,
+                    recovery_label=(
+                        f"Validated maintenance and normal health are available for {drone_id}."
+                        if fleet_recovery_at
+                        else None
+                    ),
+                    recovery_evidence=fleet_recovery_evidence,
+                    affected_order_ids=[
+                        row["order_id"] for row in (active + upcoming)
+                    ],
+                    affected_drone_ids=[drone_id],
                 )
             )
         elif health_state == "restrict":
+            fleet_recovery_at, fleet_recovery_evidence = (
+                first_validated_fleet_recovery(drone_id, now)
+            )
             issues.append(
                 make_issue(
                     f"ISS-RESTRICT-{drone_id}-{today}",
@@ -422,8 +580,22 @@ def build_scenario(meta: dict[str, str]) -> dict:
                         }
                     ],
                     ["RESTRICT_AND_OPEN_MAINTENANCE_REVIEW", "OPEN_OPERATOR_REVIEW"],
+                    "RESTRICT_AND_OPEN_MAINTENANCE_REVIEW",
                     datetime.combine(now.date(), datetime.min.time()),
                     launch_blocking=False,
+                    effect="aircraft_restrict",
+                    clearance_mode="human_release",
+                    recovery_at=fleet_recovery_at,
+                    recovery_label=(
+                        f"Health readings for {drone_id} returned within limits."
+                        if fleet_recovery_at
+                        else None
+                    ),
+                    recovery_evidence=fleet_recovery_evidence,
+                    affected_order_ids=[
+                        row["order_id"] for row in (active + upcoming)
+                    ],
+                    affected_drone_ids=[drone_id],
                 )
             )
 
@@ -448,11 +620,16 @@ def build_scenario(meta: dict[str, str]) -> dict:
                         }
                     ],
                     ["OPEN_OPERATOR_REVIEW", "REMOVE_INVALID_ASSIGNMENT"],
+                    "OPEN_OPERATOR_REVIEW",
                     max(
                         timeline_start,
                         (dt(related[0]["launch_at"]) or now) - timedelta(minutes=30),
                     ),
                     launch_blocking=False,
+                    effect="assignment_conflict",
+                    clearance_mode="manual_resolution",
+                    affected_order_ids=[row["order_id"] for row in related],
+                    affected_drone_ids=[drone_id],
                 )
             )
 
@@ -465,6 +642,9 @@ def build_scenario(meta: dict[str, str]) -> dict:
                 and (number(row["tether_descent_sec"]) or 0) > 39.4
             ]
             if recent_tether:
+                tether_recovery_at, tether_recovery_evidence = (
+                    first_validated_fleet_recovery(drone_id, now)
+                )
                 issues.append(
                     make_issue(
                         f"ISS-TETHER-{drone_id}-{today}",
@@ -491,8 +671,19 @@ def build_scenario(meta: dict[str, str]) -> dict:
                             },
                         ],
                         ["OPEN_OPERATOR_REVIEW", "RESTRICT_AND_OPEN_MAINTENANCE_REVIEW"],
+                        "OPEN_OPERATOR_REVIEW",
                         dt(recent_tether[-1]["recorded_at"]) or now,
                         launch_blocking=False,
+                        effect="aircraft_restrict",
+                        clearance_mode="human_release",
+                        recovery_at=tether_recovery_at,
+                        recovery_label=(
+                            f"Validated tether maintenance release is available for {drone_id}."
+                            if tether_recovery_at
+                            else None
+                        ),
+                        recovery_evidence=tether_recovery_evidence,
+                        affected_drone_ids=[drone_id],
                     )
                 )
 
@@ -524,6 +715,16 @@ def build_scenario(meta: dict[str, str]) -> dict:
         launch_at = dt(op["launch_at"]) or datetime.min
         delivered_at = dt(op["delivered_at"])
         readiness_known = (dt(ready["event_at"]) or datetime.max) <= now
+        if not truthy(ready["handoff_verified"]):
+            actual_readiness_status = "unverified"
+            actual_readiness_label = "Handoff unverified"
+        elif ready["ready_status"] == "ready_late":
+            actual_readiness_status = "late"
+            actual_readiness_label = f"Ready late · +{ready['additional_delay_min']}m"
+        else:
+            actual_readiness_status = "ready"
+            actual_readiness_label = "Ready and verified"
+
         if op["status"] == "cancelled_weather" and launch_at <= now:
             current_status = "cancelled"
         elif delivered_at and delivered_at <= now:
@@ -538,15 +739,9 @@ def build_scenario(meta: dict[str, str]) -> dict:
         if not readiness_known:
             readiness_status = "awaiting_event"
             readiness_label = "Awaiting actual readiness"
-        elif not truthy(ready["handoff_verified"]):
-            readiness_status = "unverified"
-            readiness_label = "Handoff unverified"
-        elif ready["ready_status"] == "ready_late":
-            readiness_status = "late"
-            readiness_label = f"Ready late · +{ready['additional_delay_min']}m"
         else:
-            readiness_status = "ready"
-            readiness_label = "Ready and verified"
+            readiness_status = actual_readiness_status
+            readiness_label = actual_readiness_label
 
         minutes_to_launch = int((launch_at - now).total_seconds() // 60)
         preflight_checks: list[dict] = []
@@ -616,10 +811,10 @@ def build_scenario(meta: dict[str, str]) -> dict:
                 "deliveredAt": op["delivered_at"] or None,
                 "minutesToLaunch": minutes_to_launch,
                 "status": current_status,
-                "readinessStatus": readiness_status,
-                "readinessLabel": readiness_label,
-                "readinessEventAt": ready["event_at"] if readiness_known else None,
-                "handoffVerified": truthy(ready["handoff_verified"]) if readiness_known else None,
+                "readinessStatus": actual_readiness_status,
+                "readinessLabel": actual_readiness_label,
+                "readinessEventAt": ready["event_at"],
+                "handoffVerified": truthy(ready["handoff_verified"]),
                 "payloadKg": number(op["payload_weight_kg"]),
                 "distanceKm": number(op["distance_one_way_km"]),
                 "preflightState": preflight_state,
@@ -658,8 +853,27 @@ def build_scenario(meta: dict[str, str]) -> dict:
                         },
                     ],
                     ["REESTIMATE_PROMISE_FROM_ACTUAL_READY", "OPEN_OPERATOR_REVIEW"],
+                    "REESTIMATE_PROMISE_FROM_ACTUAL_READY",
                     launch_at - timedelta(minutes=15),
                     launch_blocking=True,
+                    effect="order_readiness_hold",
+                    clearance_mode="automatic",
+                    recovery_at=dt(ready["event_at"]),
+                    recovery_label=f"Actual readiness confirmed for {op['order_id']}.",
+                    recovery_evidence=[
+                        {
+                            "id": f"readiness:{ready['merchant_event_id']}",
+                            "dataset": "merchant_readiness_events.csv",
+                            "label": "Actual readiness event",
+                            "value": (
+                                f"{ready['ready_status']} · "
+                                f"handoff verified {ready['handoff_verified']}"
+                            ),
+                            "timestamp": ready["event_at"],
+                        }
+                    ],
+                    affected_order_ids=[op["order_id"]],
+                    affected_drone_ids=[op["drone_id"]],
                 )
             )
 
@@ -697,8 +911,11 @@ def build_scenario(meta: dict[str, str]) -> dict:
                         "CUSTOMER_OUTREACH",
                         "OPEN_OPERATOR_REVIEW",
                     ],
+                    "REESTIMATE_PROMISE_FROM_ACTUAL_READY",
                     dt(latest["event_at"]) or now,
                     launch_blocking=False,
+                    effect="advisory",
+                    clearance_mode="manual_resolution",
                 )
             )
 

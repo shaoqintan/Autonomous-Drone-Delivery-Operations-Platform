@@ -35,6 +35,7 @@ export type RecommendationIssue = {
   ruleIds: string[];
   evidence: RecommendationEvidence[];
   allowedActions: ResolutionAction[];
+  defaultAction: ResolutionAction;
   launchBlocking: boolean;
   humanDecisionRequired: true;
 };
@@ -59,6 +60,7 @@ export type RecommendationResult = {
   actionId: ResolutionAction;
   source: "openai" | "policy_engine";
   evidenceIds: string[];
+  evidence: RecommendationEvidence[];
   policyRuleIds: string[];
   decisionSummary: string;
   toolsUsed: RecommendationToolTrace[];
