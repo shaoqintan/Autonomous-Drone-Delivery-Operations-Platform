@@ -209,6 +209,34 @@ type RecommendationResult =
     };
   };
 
+type SimilarIncidentMatch = {
+  id: string;
+  title: string;
+  date: string;
+  dataset: string;
+  sourceType: string;
+  similarity: number;
+  problem: string;
+  solution: string;
+  outcome: string;
+  matchReasons: string[];
+  synthetic: boolean;
+};
+
+type SimilarIncidentResult = {
+  status: "ready";
+  summary: string;
+  retrievalMethod: string;
+  index: {
+    ready: boolean;
+    chunks: number;
+    model: string;
+    dimensions: number;
+    generatedAt: string;
+  };
+  matches: SimilarIncidentMatch[];
+};
+
 type TicketStatus = "new" | "in_progress" | "waiting" | "resolved";
 
 type TicketRecord = {
@@ -325,6 +353,12 @@ const preflightLabels: Record<string, string> = {
   NO_POLICY_EXCEPTION_DETECTED: "No policy exception detected",
 };
 
+const actionLabels: Record<string, string> = {
+  OPEN_OPERATOR_REVIEW: "Requires operator review",
+  REESTIMATE_PROMISE_FROM_ACTUAL_READY:
+    "Update delivery time after the merchant confirms readiness",
+};
+
 function formatTime(value: string | null, includeDate = false) {
   if (!value) return "No live reading";
   return new Intl.DateTimeFormat("en-US", {
@@ -337,6 +371,10 @@ function formatTime(value: string | null, includeDate = false) {
 
 function displayService(value: string) {
   return value.replaceAll("_", " ").replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function displayAction(value: string) {
+  return actionLabels[value] ?? displayService(value);
 }
 
 function buildImmediateRecommendation(issue: Issue): RecommendationResult {
@@ -661,6 +699,18 @@ function StatusChip({ status }: { status: string }) {
       {statusLabels[status] ?? displayService(status)}
     </span>
   );
+}
+
+function similarIncidentEvidence(match: SimilarIncidentMatch): Evidence {
+  return {
+    id: match.id,
+    dataset: match.dataset,
+    label: match.title,
+    value: `${match.problem} What was done: ${match.solution} Result: ${match.outcome}`,
+    timestamp: match.date.includes("T")
+      ? match.date
+      : `${match.date}T00:00:00`,
+  };
 }
 
 function Metric({
@@ -2091,6 +2141,12 @@ function IssuesView({
   const [chatExpanded, setChatExpanded] = useState(false);
   const [recommendationOpen, setRecommendationOpen] = useState(false);
   const [openReference, setOpenReference] = useState<OpenReference | null>(null);
+  const [similarIncidentResults, setSimilarIncidentResults] = useState<
+    Record<string, SimilarIncidentResult>
+  >({});
+  const [similarIncidentLoading, setSimilarIncidentLoading] = useState<
+    Record<string, boolean>
+  >({});
   const referenceTargetRef = useRef<HTMLElement | null>(null);
   const [recipientByIssue, setRecipientByIssue] = useState<Record<string, string>>(
     {},
@@ -2108,6 +2164,7 @@ function IssuesView({
   };
   const selectedStatus = visibleStatus(selectedIssue);
   const selectedMessages = messages[selectedIssue.id] ?? [];
+  const similarIncidentResult = similarIncidentResults[selectedIssue.id];
   const conflictingOrders = selectedIssue.affectedOrderIds
     .map((orderId) => orders.find((order) => order.orderId === orderId))
     .filter((order): order is Order => Boolean(order));
@@ -2137,6 +2194,7 @@ function IssuesView({
       ...issue.recoveryEvidence,
     ]),
     ...(activeRecommendation.evidence ?? []),
+    ...(similarIncidentResult?.matches.map(similarIncidentEvidence) ?? []),
   ].filter(
     (item, index, source) =>
       source.findIndex((candidate) => candidate.id === item.id) === index,
@@ -2216,6 +2274,47 @@ function IssuesView({
     return () => window.cancelAnimationFrame(frame);
   }, [openReference]);
 
+  useEffect(() => {
+    if (
+      !recommendationOpen ||
+      similarIncidentResults[selectedIssue.id]
+    ) {
+      return;
+    }
+    const controller = new AbortController();
+    setSimilarIncidentLoading((current) => ({
+      ...current,
+      [selectedIssue.id]: true,
+    }));
+    void fetch("/api/similar-incidents", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ issue: selectedIssue }),
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Incident history search failed");
+        return (await response.json()) as SimilarIncidentResult;
+      })
+      .then((result) => {
+        setSimilarIncidentResults((current) => ({
+          ...current,
+          [selectedIssue.id]: result,
+        }));
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+      })
+      .finally(() => {
+        if (controller.signal.aborted) return;
+        setSimilarIncidentLoading((current) => ({
+          ...current,
+          [selectedIssue.id]: false,
+        }));
+      });
+    return () => controller.abort();
+  }, [recommendationOpen, selectedIssue.id]);
+
   return (
     <div className="page-content issues-page">
       <div className="page-heading">
@@ -2284,9 +2383,9 @@ function IssuesView({
                           <strong>{issue.title}</strong>
                           <span className="kanban-ai-preview">
                             <Bot size={13} />
-                            {displayService(
+                            {displayAction(
                               issueRecommendation?.actionId ??
-                            issue.defaultAction,
+                                issue.defaultAction,
                             )}
                           </span>
                           <span className="kanban-card-footer">
@@ -2531,6 +2630,145 @@ function IssuesView({
               </section>
             )}
 
+          <section className="similar-incidents-card">
+            <div className="similar-incidents-heading">
+              <span>
+                <History size={17} />
+              </span>
+              <div>
+                <strong>How this was handled before</strong>
+                <small>Historical incident and resolution search</small>
+              </div>
+              {similarIncidentResult && (
+                <b>{similarIncidentResult.matches.length} matches</b>
+              )}
+            </div>
+
+            {similarIncidentLoading[selectedIssue.id] && (
+              <div className="similar-incidents-loading">
+                <span />
+                <div>
+                  <strong>Searching the incident archive</strong>
+                  <small>Matching symptoms, policy triggers, and outcomes…</small>
+                </div>
+              </div>
+            )}
+
+            {similarIncidentResult?.matches[0] && (
+              <>
+                <p className="similar-incidents-summary">
+                  {similarIncidentResult.summary}
+                </p>
+                <article className="similar-incident-featured">
+                  <div className="similar-incident-topline">
+                    <span>
+                      {similarIncidentResult.matches[0].synthetic
+                        ? "Demo incident"
+                        : "Best archive match"}
+                    </span>
+                    <strong>
+                      {similarIncidentResult.matches[0].similarity}% similar
+                    </strong>
+                  </div>
+                  <div className="similar-incident-title">
+                    <div>
+                      <h3>{similarIncidentResult.matches[0].title}</h3>
+                      <small>
+                        {similarIncidentResult.matches[0].id} ·{" "}
+                        {new Intl.DateTimeFormat("en-US", {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        }).format(
+                          new Date(
+                            similarIncidentResult.matches[0].date.includes("T")
+                              ? similarIncidentResult.matches[0].date
+                              : `${similarIncidentResult.matches[0].date}T00:00:00`,
+                          ),
+                        )}
+                      </small>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setOpenReference({
+                          kind: "evidence",
+                          value: similarIncidentEvidence(
+                            similarIncidentResult.matches[0],
+                          ),
+                        })
+                      }
+                    >
+                      Open source
+                      <ExternalLink size={13} />
+                    </button>
+                  </div>
+                  <div className="similar-incident-resolution">
+                    <div>
+                      <span>What happened</span>
+                      <p>{similarIncidentResult.matches[0].problem}</p>
+                    </div>
+                    <div className="solution">
+                      <span>What they did</span>
+                      <p>{similarIncidentResult.matches[0].solution}</p>
+                    </div>
+                    <div className="outcome">
+                      <span>Result / lesson</span>
+                      <p>{similarIncidentResult.matches[0].outcome}</p>
+                    </div>
+                  </div>
+                  <div className="similar-incident-reasons">
+                    {similarIncidentResult.matches[0].matchReasons.map((reason) => (
+                      <span key={reason}>{reason}</span>
+                    ))}
+                  </div>
+                </article>
+
+                {similarIncidentResult.matches.length > 1 && (
+                  <details className="similar-incident-more">
+                    <summary>
+                      View {similarIncidentResult.matches.length - 1} more matches
+                      <ChevronDown size={14} />
+                    </summary>
+                    <div>
+                      {similarIncidentResult.matches.slice(1).map((match) => (
+                        <article key={`${match.sourceType}:${match.id}`}>
+                          <div>
+                            <span>
+                              {match.synthetic ? "Demo incident" : displayService(match.sourceType)}
+                            </span>
+                            <strong>{match.similarity}%</strong>
+                          </div>
+                          <h4>{match.title}</h4>
+                          <p><b>Action:</b> {match.solution}</p>
+                          <p><b>Result:</b> {match.outcome}</p>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setOpenReference({
+                                kind: "evidence",
+                                value: similarIncidentEvidence(match),
+                              })
+                            }
+                          >
+                            Open {match.id}
+                            <ExternalLink size={12} />
+                          </button>
+                        </article>
+                      ))}
+                    </div>
+                  </details>
+                )}
+
+                <small className="similar-incidents-method">
+                  <Database size={12} />
+                  {similarIncidentResult.retrievalMethod} ·{" "}
+                  {similarIncidentResult.index.chunks.toLocaleString()} indexed chunks
+                </small>
+              </>
+            )}
+          </section>
+
           <div className="ticket-workflow">
             {columns.map((column) => (
               <button
@@ -2575,7 +2813,7 @@ function IssuesView({
               </div>
             </div>
             <div className="recommended-action recommended-action-primary">
-              <strong>{displayService(activeRecommendation.actionId)}</strong>
+              <strong>{displayAction(activeRecommendation.actionId)}</strong>
             </div>
             <p className="recommendation-decision">
               {activeRecommendation.decisionSummary}
